@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta content="width=device-width, initial-scale=1.0" name="viewport" />
+    <title>ESP32 Flasher</title>
+    <link rel="stylesheet" href="./src/style.css" />
+  </head>
+  <body>
+    <div class="container">
+      <header class="header">
+        <h1 class="title">
+          <span class="chip-icon">🔧</span>
+          ESP32 Flasher
+        </h1>
+        <p class="subtitle">Простой инструмент для прошивки ESP32</p>
+      </header>
+
+      <main class="main-content">
+        <div class="control-group">
+          <label class="label">COM-порт:</label>
+          <div class="input-row">
+            <select id="portSelect" class="select"></select>
+            <button id="btnRefresh" class="btn btn-secondary">🔄 Обновить</button>
+          </div>
+        </div>
+
+        <div class="control-group">
+          <label class="label">Файл прошивки (.bin):</label>
+          <div class="input-row">
+            <input type="text" id="filePath" readonly class="input file-input" placeholder="Выберите файл..." />
+            <button id="btnChoose" class="btn btn-secondary">📁 Выбрать</button>
+          </div>
+        </div>
+
+        <div class="control-group">
+          <button id="btnFlash" class="btn btn-primary">⚡ Прошить ESP32</button>
+        </div>
+
+        <div id="progressContainer" class="progress-container" style="display: none;">
+          <label class="label">Прогресс прошивки:</label>
+          <div class="progress-bar-wrapper">
+            <div class="progress-bar">
+              <div id="progressBar" class="progress-fill"></div>
+            </div>
+            <span id="progressText" class="progress-text">0%</span>
+          </div>
+        </div>
+
+        <div class="log-container">
+          <label class="label">Лог операций:</label>
+          <pre id="log" class="log"></pre>
+        </div>
+      </main>
+    </div>
+
+    <script src="./src/main.js" type="module"></script>
+  </body>
+</html>
