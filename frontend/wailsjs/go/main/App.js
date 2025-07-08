@@ -13,3 +13,11 @@ export function Flash(arg1, arg2) {
 export function ListPorts() {
   return window['go']['main']['App']['ListPorts']();
 }
+
+export function MonitorPort(arg1, arg2) {
+  return window['go']['main']['App']['MonitorPort'](arg1, arg2);
+}
+
+export function StopMonitor() {
+  return window['go']['main']['App']['StopMonitor']();
+}

@@ -19,7 +19,7 @@ func main() {
 	err := wails.Run(&options.App{
 		Title:  "ESP32 Flasher",
 		Width:  650,
-		Height: 700,
+		Height: 800,
 		AssetServer: &assetserver.Options{
 			Assets: assets,
 		},

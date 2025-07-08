@@ -1,19 +1,67 @@
-# README
+# ESP32 Flasher
 
-## About
+Полностью автономный (single-binary) ESP32 flasher на Go с UI на Wails. Реализует собственный протокол ESP32 ROM bootloader без зависимости от esptool.py.
 
-This is the official Wails Vanilla template.
+## ✨ Особенности
 
-You can configure the project by editing `wails.json`. More information about the project settings can be found
-here: https://wails.io/docs/reference/project-config
+- **Эталонная реализация**: Использует официальные алгоритмы сброса из [esp-serial-flasher](https://github.com/espressif/esp-serial-flasher)
+- **Автономность**: Единый исполнимый файл без внешних зависимостей
+- **Нативный протокол**: Собственная реализация ESP32 ROM bootloader протокола (SLIP, SYNC, FLASH_BEGIN, FLASH_DATA, FLASH_END, SPI_ATTACH)
+- **Автоматический сброс**: Корректный перевод ESP32 в режим загрузчика через DTR/RTS
+- **Мониторинг порта**: Встроенный Serial Monitor для диагностики ESP32 (9600-921600 baud)
+- **Прогресс и логи**: Подробные логи процесса прошивки с индикацией прогресса
+- **Обработка ошибок**: Корректная реакция на ошибки и обрывы связи
 
-## Live Development
+## 🚀 Быстрый старт
 
-To run in live development mode, run `wails dev` in the project directory. This will run a Vite development
-server that will provide very fast hot reload of your frontend changes. If you want to develop in a browser
-and have access to your Go methods, there is also a dev server that runs on http://localhost:34115. Connect
-to this in your browser, and you can call your Go code from devtools.
+### Прошивка
 
-## Building
+1. Запустите приложение
+2. Выберите файл application.bin
+3. Выберите COM-порт ESP32
+4. Нажмите "Flash"
+5. ESP32 автоматически переводится в bootloader и прошивается
 
-To build a redistributable, production mode package, use `wails build`.
+### Мониторинг
+
+1. Выберите COM-порт ESP32
+2. Выберите скорость (9600, 115200, 460800, 921600 baud)
+3. Нажмите "🔍 Мониторинг"
+4. Смотрите вывод ESP32 в реальном времени
+5. Нажмите "⏹️ Стоп" для остановки
+
+## 🔧 Техническая информация
+
+### Последовательность сброса
+
+Использует эталонную последовательность из официального esp-serial-flasher:
+
+1. GPIO0 (BOOT) = LOW
+2. RESET = LOW на 100мс
+3. RESET = HIGH
+4. Держать GPIO0 = LOW ещё 50мс
+5. GPIO0 = HIGH
+
+### Подключение
+
+```text
+ESP32 GPIO0 <--[1kΩ]-- DTR (USB-UART)
+ESP32 EN    <--[1kΩ]-- RTS (USB-UART)
+```
+
+### Протокол
+
+- Адрес прошивки: 0x10000 (стандартный для application partition)
+- Размер блока: 4KB
+- Поддержка MD5 verification
+- Автоматическое стирание секторов
+
+## 🛠️ Сборка
+
+```bash
+wails build
+```
+
+## 📝 Лицензия
+
+MIT License

@@ -6,3 +6,7 @@ export function ChooseFile():Promise<string>;
 export function Flash(arg1:string,arg2:string):Promise<void>;
 
 export function ListPorts():Promise<Array<string>>;
+
+export function MonitorPort(arg1:string,arg2:number):Promise<void>;
+
+export function StopMonitor():Promise<void>;

@@ -21,23 +21,41 @@
           <label class="label">COM-порт:</label>
           <div class="input-row">
             <select id="portSelect" class="select"></select>
-            <button id="btnRefresh" class="btn btn-secondary">🔄 Обновить</button>
+            <select id="baudSelect" class="select" style="max-width: 120px">
+              <option value="9600">9600</option>
+              <option value="115200" selected>115200</option>
+              <option value="460800">460800</option>
+              <option value="921600">921600</option>
+            </select>
+            <button id="btnRefresh" class="btn btn-secondary">🔄</button>
           </div>
         </div>
 
         <div class="control-group">
           <label class="label">Файл прошивки (.bin):</label>
           <div class="input-row">
-            <input type="text" id="filePath" readonly class="input file-input" placeholder="Выберите файл..." />
+            <input
+              type="text"
+              id="filePath"
+              readonly
+              class="input file-input"
+              placeholder="Выберите файл..."
+            />
             <button id="btnChoose" class="btn btn-secondary">📁 Выбрать</button>
           </div>
         </div>
 
         <div class="control-group">
-          <button id="btnFlash" class="btn btn-primary">⚡ Прошить ESP32</button>
+          <button id="btnFlash" class="btn btn-primary">
+            ⚡ Прошить ESP32
+          </button>
         </div>
 
-        <div id="progressContainer" class="progress-container" style="display: none;">
+        <div
+          id="progressContainer"
+          class="progress-container"
+          style="display: none"
+        >
           <label class="label">Прогресс прошивки:</label>
           <div class="progress-bar-wrapper">
             <div class="progress-bar">
@@ -48,7 +66,30 @@
         </div>
 
         <div class="log-container">
-          <label class="label">Лог операций:</label>
+          <div class="log-header">
+            <label class="label">Лог операций:</label>
+            <div class="log-controls">
+              <button id="btnMonitor" class="btn btn-compact">
+                🔍 Мониторинг
+              </button>
+              <button
+                id="btnStopMonitor"
+                class="btn btn-compact btn-stop"
+                style="display: none"
+              >
+                ⏹️ Стоп
+              </button>
+              <button
+                id="btnAutoScroll"
+                class="btn btn-compact btn-toggle active"
+              >
+                📜 Автоскролл
+              </button>
+              <button id="btnClearLog" class="btn btn-compact">
+                🗑️ Очистить
+              </button>
+            </div>
+          </div>
           <pre id="log" class="log"></pre>
         </div>
       </main>
