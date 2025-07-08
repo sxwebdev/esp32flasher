@@ -5,6 +5,10 @@ export function ChooseFile():Promise<string>;
 
 export function Flash(arg1:string,arg2:string):Promise<void>;
 
+export function FlashMultipleFiles(arg1:string,arg2:Record<string, number>):Promise<void>;
+
+export function FlashWithRetry(arg1:string,arg2:string,arg3:number):Promise<void>;
+
 export function ListPorts():Promise<Array<string>>;
 
 export function MonitorPort(arg1:string,arg2:number):Promise<void>;

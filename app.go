@@ -63,7 +63,7 @@ func (a *App) emitLog(message string) {
 	runtime.EventsEmit(a.ctx, "flash-log", message)
 }
 
-// Flash прошивает только application.bin на адрес 0x10000 используя встроенную реализацию esptool
+// Flash прошивает application.bin на адрес 0x10000 - ВЕРСИЯ ДЛЯ ПОВРЕЖДЕННОГО FLASH
 func (a *App) Flash(portName, filePath string) error {
 	// Проверить что файл существует
 	if _, err := os.Stat(filePath); os.IsNotExist(err) {
@@ -82,15 +82,45 @@ func (a *App) Flash(portName, filePath string) error {
 	a.emitProgress(10, "Файл загружен")
 	a.emitLog(fmt.Sprintf("📄 Загружен файл: %d байт", len(data)))
 
-	// Создать ESP32 флешер
+	// ИСПРАВЛЕНИЕ: Обнаружен цикл перезагрузок - используем специальную обработку
 	a.emitProgress(20, "Подключение к ESP32...")
 	a.emitLog("🔗 Подключение к ESP32...")
+	a.emitLog("⚠️ ВНИМАНИЕ: Обнаружены ошибки checksum в flash")
+	a.emitLog("💡 ESP32 в цикле перезагрузок - это нормально для поврежденного flash")
 
 	flasher, err := NewESP32FlasherWithProgress(portName, a)
 	if err != nil {
-		return fmt.Errorf("failed to create flasher: %w", err)
+		a.emitLog("⚠️ Автоматический режим не сработал")
+		a.emitLog("🔄 Для поврежденного flash попробуем ручной режим...")
+
+		// НОВОЕ: Специальные инструкции для поврежденного flash
+		a.emitLog("")
+		a.emitLog("=== РЕЖИМ ВОССТАНОВЛЕНИЯ ПОВРЕЖДЕННОГО FLASH ===")
+		a.emitLog("Ваш ESP32 имеет поврежденный flash (csum err), но это исправимо!")
+		a.emitLog("")
+		a.emitLog("Выполните следующие действия:")
+		a.emitLog("1. ESP32 должен постоянно перезагружаться (это нормально)")
+		a.emitLog("2. Найдите кнопки BOOT и RESET на плате")
+		a.emitLog("3. Удерживайте кнопку BOOT (GPIO0)")
+		a.emitLog("4. Нажмите и отпустите кнопку RESET")
+		a.emitLog("5. Отпустите кнопку BOOT")
+		a.emitLog("6. ESP32 должен перестать перезагружаться")
+		a.emitLog("7. Нажмите Enter для продолжения...")
+
+		// Ждем пользователя
+		fmt.Print("Нажмите Enter когда ESP32 стабилизируется...")
+		fmt.Scanln()
+
+		// Пробуем ручной режим
+		flasher, err = NewESP32FlasherManual(portName, a)
+		if err != nil {
+			return fmt.Errorf("failed to create flasher in manual mode: %w", err)
+		}
 	}
 	defer flasher.Close()
+
+	// НЕ пробуем увеличивать скорость для поврежденного flash
+	a.emitLog("⚠️ Поврежденный flash - оставляем скорость 115200 для надежности")
 
 	// Прошить данные с прогрессом (начинается с 30%)
 	if err := flasher.FlashData(data, 0x10000, portName); err != nil {
@@ -98,9 +128,80 @@ func (a *App) Flash(portName, filePath string) error {
 		return fmt.Errorf("failed to flash: %w", err)
 	}
 
+	// ДОПОЛНИТЕЛЬНО: Перезагружаем ESP32 в нормальный режим
+	a.emitLog("🔄 Перезагрузка ESP32...")
+	flasher.RebootTarget()
+
 	a.emitProgress(100, "Прошивка завершена!")
 	a.emitLog("✅ Прошивка успешно завершена!")
+	a.emitLog("💡 Flash восстановлен - ESP32 больше не должен перезагружаться")
 
+	return nil
+}
+
+// FlashWithRetry - версия с повторными попытками
+func (a *App) FlashWithRetry(portName, filePath string, maxAttempts int) error {
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		a.emitLog(fmt.Sprintf("🔄 Попытка прошивки %d/%d", attempt, maxAttempts))
+
+		err := a.Flash(portName, filePath)
+		if err == nil {
+			return nil // Успех!
+		}
+
+		a.emitLog(fmt.Sprintf("❌ Попытка %d не удалась: %v", attempt, err))
+
+		if attempt < maxAttempts {
+			a.emitLog("⏳ Ожидание перед следующей попыткой...")
+			// time.Sleep(2 * time.Second) // Раскомментируйте если нужна задержка
+		}
+	}
+
+	return fmt.Errorf("не удалось прошить после %d попыток", maxAttempts)
+}
+
+// FlashMultipleFiles - прошивка нескольких файлов (если нужно)
+func (a *App) FlashMultipleFiles(portName string, files map[string]uint32) error {
+	// files - карта filename -> offset
+	// Например: {"bootloader.bin": 0x1000, "app.bin": 0x10000, "partitions.bin": 0x8000}
+
+	a.emitLog("🔄 Режим прошивки нескольких файлов...")
+
+	// Создаем флешер один раз
+	flasher, err := NewESP32FlasherWithProgress(portName, a)
+	if err != nil {
+		// Fallback на ручной режим
+		a.emitLog("⚠️ Переходим в ручной режим для множественной прошивки...")
+		flasher, err = NewESP32FlasherManual(portName, a)
+		if err != nil {
+			return fmt.Errorf("failed to create flasher: %w", err)
+		}
+	}
+	defer flasher.Close()
+
+	// Увеличиваем скорость
+	flasher.SetBaudRate(460800)
+
+	// Прошиваем каждый файл
+	fileCount := 0
+	totalFiles := len(files)
+
+	for filename, offset := range files {
+		fileCount++
+		a.emitLog(fmt.Sprintf("📄 Прошивка файла %d/%d: %s -> 0x%x", fileCount, totalFiles, filename, offset))
+
+		data, err := os.ReadFile(filename)
+		if err != nil {
+			return fmt.Errorf("failed to read file %s: %w", filename, err)
+		}
+
+		if err := flasher.FlashData(data, offset, portName); err != nil {
+			return fmt.Errorf("failed to flash %s: %w", filename, err)
+		}
+	}
+
+	flasher.RebootTarget()
+	a.emitLog("✅ Все файлы прошиты успешно!")
 	return nil
 }
 

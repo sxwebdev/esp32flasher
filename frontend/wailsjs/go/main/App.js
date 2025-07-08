@@ -10,6 +10,14 @@ export function Flash(arg1, arg2) {
   return window['go']['main']['App']['Flash'](arg1, arg2);
 }
 
+export function FlashMultipleFiles(arg1, arg2) {
+  return window['go']['main']['App']['FlashMultipleFiles'](arg1, arg2);
+}
+
+export function FlashWithRetry(arg1, arg2, arg3) {
+  return window['go']['main']['App']['FlashWithRetry'](arg1, arg2, arg3);
+}
+
 export function ListPorts() {
   return window['go']['main']['App']['ListPorts']();
 }
