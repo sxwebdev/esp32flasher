@@ -91,7 +91,7 @@ func (f *ESP32Flasher) Close() error {
 // enterBootloader puts ESP32 into bootloader mode using reset sequence from Fluepke/esptool
 func (f *ESP32Flasher) enterBootloader() error {
 	if f.callback != nil {
-		f.callback.emitLog("🔄 Перевод ESP32 в режим загрузки...")
+		f.callback.emitLog("🔄 Entering bootloader mode...")
 	}
 
 	// Reset sequence based on Fluepke/esptool (proven to work):
@@ -120,12 +120,12 @@ func (f *ESP32Flasher) enterBootloader() error {
 	// Try to sync with bootloader
 	for attempt := 0; attempt < 5; attempt++ {
 		if f.callback != nil {
-			f.callback.emitLog(fmt.Sprintf("🔗 Попытка синхронизации %d/5...", attempt+1))
+			f.callback.emitLog(fmt.Sprintf("🔗 Sync attempt %d/5...", attempt+1))
 		}
 
 		if err := f.sync(); err == nil {
 			if f.callback != nil {
-				f.callback.emitLog("✅ ESP32 успешно переведен в режим bootloader")
+				f.callback.emitLog("✅ ESP32 entered bootloader mode")
 			}
 			return nil
 		}
@@ -133,7 +133,7 @@ func (f *ESP32Flasher) enterBootloader() error {
 		// Try reset again with inverted logic for some adapters
 		if attempt == 2 {
 			if f.callback != nil {
-				f.callback.emitLog("⚠️ Пробуем инвертированную логику DTR/RTS...")
+				f.callback.emitLog("⚠️ Trying inverted DTR/RTS logic...")
 			}
 			// Inverted logic reset
 			f.port.SetDTR(true)
@@ -149,12 +149,12 @@ func (f *ESP32Flasher) enterBootloader() error {
 	}
 
 	if f.callback != nil {
-		f.callback.emitLog("❌ Не удалось перевести ESP32 в режим bootloader")
-		f.callback.emitLog("💡 Попробуйте ручной режим:")
-		f.callback.emitLog("   1. Удерживайте кнопку BOOT (GPIO0)")
-		f.callback.emitLog("   2. Нажмите и отпустите кнопку RESET (EN)")
-		f.callback.emitLog("   3. Отпустите кнопку BOOT")
-		f.callback.emitLog("   4. Запустите прошивку снова")
+		f.callback.emitLog("❌ Failed to enter bootloader mode")
+		f.callback.emitLog("💡 Try manual mode:")
+		f.callback.emitLog("   1. Hold BOOT button (GPIO0)")
+		f.callback.emitLog("   2. Press and release RESET button (EN)")
+		f.callback.emitLog("   3. Release BOOT button")
+		f.callback.emitLog("   4. Flash again")
 	}
 
 	return fmt.Errorf("failed to enter bootloader mode after 5 attempts")
@@ -332,7 +332,7 @@ func (f *ESP32Flasher) sync() error {
 // attachSpiFlash attaches SPI flash
 func (f *ESP32Flasher) attachSpiFlash() error {
 	if f.callback != nil {
-		f.callback.emitLog("🔗 Подключение к SPI Flash...")
+		f.callback.emitLog("🔗 Attaching SPI Flash...")
 	}
 
 	data := make([]byte, 8) // 8 bytes of zeros for default SPI
@@ -343,7 +343,7 @@ func (f *ESP32Flasher) attachSpiFlash() error {
 
 	f.flashAttached = true
 	if f.callback != nil {
-		f.callback.emitLog("✅ SPI Flash подключен")
+		f.callback.emitLog("✅ SPI Flash attached")
 	}
 	return nil
 }
@@ -376,7 +376,7 @@ func compressData(data []byte) ([]byte, error) {
 // changeBaudRate changes baud rate for faster transfer
 func (f *ESP32Flasher) changeBaudRate(newBaud int) error {
 	if f.callback != nil {
-		f.callback.emitLog(fmt.Sprintf("⚡ Переключение на %d baud...", newBaud))
+		f.callback.emitLog(fmt.Sprintf("⚡ Switching to %d baud...", newBaud))
 	}
 
 	// Send change baudrate command
@@ -404,7 +404,7 @@ func (f *ESP32Flasher) changeBaudRate(newBaud int) error {
 	f.port.ResetInputBuffer()
 
 	if f.callback != nil {
-		f.callback.emitLog(fmt.Sprintf("✅ Скорость: %d baud", newBaud))
+		f.callback.emitLog(fmt.Sprintf("✅ Speed: %d baud", newBaud))
 	}
 	return nil
 }
@@ -414,7 +414,7 @@ func (f *ESP32Flasher) FlashData(data []byte, offset uint32, portName string) er
 	// 0. Try to increase baud rate for faster transfer
 	if err := f.changeBaudRate(460800); err != nil {
 		if f.callback != nil {
-			f.callback.emitLog("⚠️ Не удалось увеличить скорость, продолжаем на 115200")
+			f.callback.emitLog("⚠️ Failed to increase speed, continuing at 115200")
 		}
 	}
 
@@ -427,8 +427,8 @@ func (f *ESP32Flasher) FlashData(data []byte, offset uint32, portName string) er
 
 	// 2. Compress data
 	if f.callback != nil {
-		f.callback.emitLog("📦 Сжатие данных...")
-		f.callback.emitProgress(40, "Сжатие данных...")
+		f.callback.emitLog("📦 Compressing data...")
+		f.callback.emitProgress(40, "Compressing...")
 	}
 
 	compressed, err := compressData(data)
@@ -438,7 +438,7 @@ func (f *ESP32Flasher) FlashData(data []byte, offset uint32, portName string) er
 
 	if f.callback != nil {
 		ratio := float64(len(compressed)) / float64(len(data)) * 100
-		f.callback.emitLog(fmt.Sprintf("📦 Сжато: %d → %d байт (%.1f%%)", len(data), len(compressed), ratio))
+		f.callback.emitLog(fmt.Sprintf("📦 Compressed: %d → %d bytes (%.1f%%)", len(data), len(compressed), ratio))
 	}
 
 	// 3. Calculate blocks
@@ -447,8 +447,8 @@ func (f *ESP32Flasher) FlashData(data []byte, offset uint32, portName string) er
 
 	// 4. Begin flash (deflate mode)
 	if f.callback != nil {
-		f.callback.emitLog("🗑️ Стирание секторов Flash...")
-		f.callback.emitProgress(50, "Стирание Flash...")
+		f.callback.emitLog("🗑️ Erasing flash sectors...")
+		f.callback.emitProgress(50, "Erasing flash...")
 	}
 
 	beginPayload := make([]byte, 16)
@@ -457,10 +457,10 @@ func (f *ESP32Flasher) FlashData(data []byte, offset uint32, portName string) er
 	binary.LittleEndian.PutUint32(beginPayload[8:12], FlashBlockSize)  // block size
 	binary.LittleEndian.PutUint32(beginPayload[12:16], offset)         // offset
 
-	// Таймаут зависит от размера - стирание 2MB может занять 30+ секунд
+	// Timeout depends on size - erasing 2MB can take 30+ seconds
 	eraseTimeout := 30 * time.Second
 	if uncompressedSize > 1024*1024 {
-		eraseTimeout = 60 * time.Second // 60 секунд для > 1MB
+		eraseTimeout = 60 * time.Second // 60 seconds for > 1MB
 	}
 	_, err = f.checkExecuteCommand(OpcodeFlashDeflBegin, beginPayload, 0, eraseTimeout, 3)
 	if err != nil {
@@ -468,15 +468,15 @@ func (f *ESP32Flasher) FlashData(data []byte, offset uint32, portName string) er
 	}
 
 	if f.callback != nil {
-		f.callback.emitLog("✅ Flash готов к записи")
+		f.callback.emitLog("✅ Flash ready for writing")
 	}
 
 	time.Sleep(10 * time.Millisecond)
 
 	// 5. Send data blocks
 	if f.callback != nil {
-		f.callback.emitLog(fmt.Sprintf("📤 Передача данных (%d блоков)...", numBlocks))
-		f.callback.emitProgress(60, "Передача данных...")
+		f.callback.emitLog(fmt.Sprintf("📤 Sending data (%d blocks)...", numBlocks))
+		f.callback.emitProgress(60, "Sending data...")
 	}
 
 	sent := uint32(0)
@@ -508,7 +508,7 @@ func (f *ESP32Flasher) FlashData(data []byte, offset uint32, portName string) er
 				break
 			}
 			if f.callback != nil {
-				f.callback.emitLog(fmt.Sprintf("⚠️ Ошибка блока %d, повтор %d/3", sequence, retry+1))
+				f.callback.emitLog(fmt.Sprintf("⚠️ Block %d error, retry %d/3", sequence, retry+1))
 			}
 		}
 
@@ -523,18 +523,18 @@ func (f *ESP32Flasher) FlashData(data []byte, offset uint32, portName string) er
 		if f.callback != nil {
 			progress := 60 + int(float64(sent)/float64(total)*35) // 60-95%
 			percent := float64(sent) / float64(total) * 100
-			f.callback.emitProgress(progress, fmt.Sprintf("Запись %.1f%%", percent))
+			f.callback.emitProgress(progress, fmt.Sprintf("Writing %.1f%%", percent))
 
 			if sequence%10 == 0 || sent >= total {
-				f.callback.emitLog(fmt.Sprintf("📦 Записано %d/%d блоков (%.1f%%)", sequence, numBlocks, percent))
+				f.callback.emitLog(fmt.Sprintf("📦 Written %d/%d blocks (%.1f%%)", sequence, numBlocks, percent))
 			}
 		}
 	}
 
 	// 6. End flash (optional - some bootloaders don't require this)
 	if f.callback != nil {
-		f.callback.emitLog("🔄 Завершение прошивки...")
-		f.callback.emitProgress(95, "Завершение...")
+		f.callback.emitLog("🔄 Finishing flash...")
+		f.callback.emitProgress(95, "Finishing...")
 	}
 
 	// Try to send flash end, but don't fail if it doesn't work
@@ -544,7 +544,7 @@ func (f *ESP32Flasher) FlashData(data []byte, offset uint32, portName string) er
 
 	if f.callback != nil {
 		f.callback.emitProgress(100, "")
-		f.callback.emitLog("✅ Прошивка завершена!")
+		f.callback.emitLog("✅ Flash complete!")
 	}
 
 	return nil

@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="ru">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta content="width=device-width, initial-scale=1.0" name="viewport" />
@@ -10,7 +10,7 @@
     <div class="container">
       <main class="main-content">
         <div class="control-group">
-          <label class="label">COM-порт:</label>
+          <label class="label">COM Port:</label>
           <div class="input-row">
             <select id="portSelect" class="select"></select>
             <select id="baudSelect" class="select" style="max-width: 120px">
@@ -24,21 +24,21 @@
         </div>
 
         <div class="control-group">
-          <label class="label">Файл прошивки (.bin):</label>
+          <label class="label">Firmware file (.bin):</label>
           <div class="input-row">
             <input
               type="text"
               id="filePath"
               readonly
               class="input file-input"
-              placeholder="Выберите файл..."
+              placeholder="Select file..."
             />
-            <button id="btnChoose" class="btn btn-secondary">📁 Выбрать</button>
+            <button id="btnChoose" class="btn btn-secondary">📁 Browse</button>
           </div>
         </div>
 
         <div class="control-group">
-          <label class="label">Адрес прошивки:</label>
+          <label class="label">Flash address:</label>
           <div class="input-row">
             <select id="offsetSelect" class="select">
               <option value="0x0">0x0 - Full image</option>
@@ -58,9 +58,7 @@
         </div>
 
         <div class="control-group">
-          <button id="btnFlash" class="btn btn-primary">
-            ⚡ Прошить ESP32
-          </button>
+          <button id="btnFlash" class="btn btn-primary">⚡ Flash ESP32</button>
         </div>
 
         <div
@@ -68,7 +66,7 @@
           class="progress-container"
           style="display: none"
         >
-          <label class="label">Прогресс прошивки:</label>
+          <label class="label">Flash progress:</label>
           <div class="progress-bar-wrapper">
             <div class="progress-bar">
               <div id="progressBar" class="progress-fill"></div>
@@ -79,11 +77,24 @@
 
         <div class="log-container">
           <div class="log-header">
-            <label class="label">Лог операций:</label>
+            <label class="label">Log:</label>
             <div class="log-controls">
-              <button id="btnMonitor" class="btn btn-compact">🔍 Monitor</button>
-              <button id="btnStopMonitor" class="btn btn-compact btn-stop" style="display: none">⏹ Stop</button>
-              <button id="btnAutoScroll" class="btn btn-compact btn-toggle active">📜 Auto</button>
+              <button id="btnMonitor" class="btn btn-compact">
+                🔍 Monitor
+              </button>
+              <button
+                id="btnStopMonitor"
+                class="btn btn-compact btn-stop"
+                style="display: none"
+              >
+                ⏹ Stop
+              </button>
+              <button
+                id="btnAutoScroll"
+                class="btn btn-compact btn-toggle active"
+              >
+                📜 Auto
+              </button>
               <button id="btnClearLog" class="btn btn-compact">🗑 Clear</button>
             </div>
           </div>

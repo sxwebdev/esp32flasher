@@ -24,7 +24,7 @@ const progressContainer = document.getElementById("progressContainer");
 const progressBar = document.getElementById("progressBar");
 const progressText = document.getElementById("progressText");
 
-// Показ/скрытие поля для custom offset
+// Show/hide custom offset field
 offsetSelect.addEventListener("change", () => {
   if (offsetSelect.value === "custom") {
     customOffset.style.display = "block";
@@ -34,7 +34,7 @@ offsetSelect.addEventListener("change", () => {
   }
 });
 
-// Получить текущий offset
+// Get current flash offset
 function getFlashOffset() {
   if (offsetSelect.value === "custom") {
     const val = customOffset.value.trim();
@@ -51,13 +51,13 @@ let autoScrollEnabled = true;
 let logLines = [];
 const MAX_LOG_LINES = 300;
 
-// Throttling для обновления DOM
+// Throttling for DOM updates
 let pendingLines = [];
 let updateScheduled = false;
 let lastUpdateTime = 0;
-const MIN_UPDATE_INTERVAL = 100; // Минимум 100мс между обновлениями
+const MIN_UPDATE_INTERVAL = 100; // Minimum 100ms between updates
 
-// Запланировать обновление DOM с throttling
+// Schedule DOM update with throttling
 function scheduleUpdate() {
   if (updateScheduled) return;
 
@@ -65,7 +65,7 @@ function scheduleUpdate() {
   const timeSinceLastUpdate = now - lastUpdateTime;
 
   if (timeSinceLastUpdate < MIN_UPDATE_INTERVAL) {
-    // Откладываем обновление
+    // Delay update
     updateScheduled = true;
     setTimeout(() => {
       updateScheduled = false;
@@ -76,52 +76,52 @@ function scheduleUpdate() {
   }
 }
 
-// Применить накопленные строки к DOM
+// Apply pending lines to DOM
 function flushPendingLines() {
   if (pendingLines.length === 0) return;
 
   lastUpdateTime = Date.now();
 
-  // Добавляем накопленные строки
+  // Add pending lines
   logLines.push(...pendingLines);
   pendingLines = [];
 
-  // Ограничиваем количество строк
+  // Limit number of lines
   if (logLines.length > MAX_LOG_LINES) {
     logLines = logLines.slice(-MAX_LOG_LINES);
   }
 
-  // Обновляем DOM один раз
+  // Update DOM once
   logArea.textContent = logLines.join("\n");
 
-  // Автоскролл
+  // Auto-scroll
   if (autoScrollEnabled) {
     logArea.scrollTop = logArea.scrollHeight;
   }
 }
 
-// Форматирование времени с миллисекундами
+// Format time with milliseconds
 function formatTime(date) {
-  const h = String(date.getHours()).padStart(2, '0');
-  const m = String(date.getMinutes()).padStart(2, '0');
-  const s = String(date.getSeconds()).padStart(2, '0');
-  const ms = String(date.getMilliseconds()).padStart(3, '0');
+  const h = String(date.getHours()).padStart(2, "0");
+  const m = String(date.getMinutes()).padStart(2, "0");
+  const s = String(date.getSeconds()).padStart(2, "0");
+  const ms = String(date.getMilliseconds()).padStart(3, "0");
   return `${h}:${m}:${s}.${ms}`;
 }
 
-// Залить лог
+// Add log entry
 function log(msg) {
   const timestamp = formatTime(new Date());
   addLogLine(`[${timestamp}] ${msg}`);
 }
 
-// Эффективное добавление строки в лог
+// Efficient log line addition
 function addLogLine(line) {
   pendingLines.push(line);
   scheduleUpdate();
 }
 
-// Обновить прогресс
+// Update progress
 function updateProgress(progress, message) {
   progressBar.style.width = `${progress}%`;
   progressText.textContent = `${progress}%`;
@@ -130,7 +130,7 @@ function updateProgress(progress, message) {
   }
 }
 
-// Показать/скрыть прогресс
+// Show/hide progress
 function showProgress(show) {
   progressContainer.style.display = show ? "block" : "none";
   if (!show) {
@@ -139,7 +139,7 @@ function showProgress(show) {
   }
 }
 
-// Настройка событий для прогресса
+// Setup progress events
 EventsOn("flash-progress", (data) => {
   updateProgress(data.progress, data.message);
 });
@@ -148,7 +148,7 @@ EventsOn("flash-log", (message) => {
   log(message);
 });
 
-// События мониторинга порта
+// Port monitor events
 EventsOn("monitor-data", (data) => {
   if (data.trim()) {
     const timestamp = formatTime(new Date());
@@ -157,7 +157,7 @@ EventsOn("monitor-data", (data) => {
 });
 
 EventsOn("monitor-error", (error) => {
-  log(`❌ Ошибка мониторинга: ${error}`);
+  log(`❌ Monitor error: ${error}`);
   stopMonitoring();
 });
 
@@ -165,7 +165,7 @@ EventsOn("monitor-stop", () => {
   stopMonitoring();
 });
 
-// Получить и показать порты
+// Refresh and display ports
 async function refreshPorts() {
   portSelect.innerHTML = "";
   try {
@@ -176,47 +176,47 @@ async function refreshPorts() {
       o.textContent = p;
       portSelect.appendChild(o);
     });
-    log(`Найдено портов: ${ports.length}`);
+    log(`Found ${ports.length} ports`);
   } catch (e) {
-    log("Ошибка ListPorts: " + e);
+    log("ListPorts error: " + e);
   }
 }
 
-// Выбор файла
+// File selection
 btnChoose.addEventListener("click", async () => {
   try {
     const res = await ChooseFile();
     if (res) {
       filePath.value = res;
-      log("Выбран " + res);
+      log("Selected " + res);
     }
   } catch (e) {
-    log("Ошибка выбора файла: " + e);
+    log("File selection error: " + e);
   }
 });
 
-// Кнопка «Прошить»
+// Flash button
 btnFlash.addEventListener("click", async () => {
   const port = portSelect.value;
   const file = filePath.value;
   const offset = getFlashOffset();
 
   if (!port || !file) {
-    alert("Укажите порт и файл!");
+    alert("Select port and file!");
     return;
   }
 
   if (isNaN(offset) || offset < 0) {
-    alert("Некорректный адрес прошивки!");
+    alert("Invalid flash address!");
     return;
   }
 
   if (isMonitoring) {
-    alert("Остановите мониторинг перед прошивкой!");
+    alert("Stop monitor before flashing!");
     return;
   }
 
-  // Блокируем интерфейс
+  // Disable UI
   btnFlash.disabled = true;
   btnChoose.disabled = true;
   btnRefresh.disabled = true;
@@ -226,26 +226,28 @@ btnFlash.addEventListener("click", async () => {
   offsetSelect.disabled = true;
   customOffset.disabled = true;
 
-  // Очищаем лог и показываем прогресс
+  // Clear log and show progress
   logArea.textContent = "";
   logLines = [];
   showProgress(true);
 
-  log(`🚀 Начинаем прошивку ${file} → ${port} @ 0x${offset.toString(16).toUpperCase()}`);
+  log(
+    `🚀 Starting flash ${file} → ${port} @ 0x${offset.toString(16).toUpperCase()}`
+  );
 
   try {
     await Flash(port, file, offset);
     setTimeout(() => {
-      alert("Прошивка завершена успешно!");
+      alert("Flash completed successfully!");
     }, 100);
   } catch (e) {
-    log("❌ Ошибка прошивки: " + e);
-    updateProgress(0, "Ошибка");
+    log("❌ Flash error: " + e);
+    updateProgress(0, "Error");
     setTimeout(() => {
-      alert("Ошибка прошивки: " + e);
+      alert("Flash error: " + e);
     }, 100);
   } finally {
-    // Разблокируем интерфейс и скрываем прогресс
+    // Enable UI and hide progress
     setTimeout(() => {
       showProgress(false);
       btnFlash.disabled = false;
@@ -256,43 +258,43 @@ btnFlash.addEventListener("click", async () => {
       baudSelect.disabled = false;
       offsetSelect.disabled = false;
       customOffset.disabled = false;
-    }, 1000); // Задержка, чтобы пользователь увидел финальное состояние
+    }, 1000); // Delay to show final state
   }
 });
 
-// Кнопка мониторинга порта
+// Monitor button
 btnMonitor.addEventListener("click", async () => {
   const port = portSelect.value;
   const baud = parseInt(baudSelect.value);
   if (!port) {
-    alert("Выберите COM-порт для мониторинга!");
+    alert("Select COM port for monitoring!");
     return;
   }
 
   try {
-    // Очищаем лог перед началом мониторинга
+    // Clear log before starting monitor
     logArea.textContent = "";
 
     await MonitorPort(port, baud);
     startMonitoring();
-    log(`🔍 Мониторинг порта ${port} запущен (${baud} baud)`);
+    log(`🔍 Monitor started on ${port} (${baud} baud)`);
   } catch (e) {
-    log("❌ Ошибка запуска мониторинга: " + e);
-    alert("Ошибка запуска мониторинга: " + e);
+    log("❌ Monitor start error: " + e);
+    alert("Monitor start error: " + e);
   }
 });
 
-// Кнопка остановки мониторинга
+// Stop monitor button
 btnStopMonitor.addEventListener("click", async () => {
   try {
     await StopMonitor();
     stopMonitoring();
   } catch (e) {
-    log("❌ Ошибка остановки мониторинга: " + e);
+    log("❌ Monitor stop error: " + e);
   }
 });
 
-// Функции мониторинга
+// Monitor functions
 function startMonitoring() {
   isMonitoring = true;
   btnMonitor.style.display = "none";
@@ -311,15 +313,15 @@ function stopMonitoring() {
   baudSelect.disabled = false;
 }
 
-// Кнопка очистки лога
+// Clear log button
 btnClearLog.addEventListener("click", () => {
   logLines = [];
   pendingLines = [];
   logArea.textContent = "";
-  log("🗑️ Лог очищен");
+  log("🗑️ Log cleared");
 });
 
-// Кнопка автоскролла
+// Auto-scroll button
 btnAutoScroll.addEventListener("click", () => {
   autoScrollEnabled = !autoScrollEnabled;
 
@@ -335,10 +337,10 @@ btnAutoScroll.addEventListener("click", () => {
   }
 });
 
-// При старте
+// On start
 btnRefresh.addEventListener("click", refreshPorts);
 
-// Инициализируем состояние кнопки автоскролла
+// Initialize auto-scroll button state
 if (autoScrollEnabled) {
   btnAutoScroll.classList.add("active");
   btnAutoScroll.textContent = "📜 Auto";
