@@ -63,15 +63,15 @@ func (a *App) emitLog(message string) {
 	runtime.EventsEmit(a.ctx, "flash-log", message)
 }
 
-// Flash прошивает только application.bin на адрес 0x10000 используя встроенную реализацию esptool
-func (a *App) Flash(portName, filePath string) error {
+// Flash прошивает файл на указанный адрес используя встроенную реализацию esptool
+func (a *App) Flash(portName, filePath string, offset int) error {
 	// Проверить что файл существует
 	if _, err := os.Stat(filePath); os.IsNotExist(err) {
 		return fmt.Errorf("file does not exist: %s", filePath)
 	}
 
 	a.emitProgress(0, "Начинаем прошивку...")
-	a.emitLog("🔄 Инициализация...")
+	a.emitLog(fmt.Sprintf("🔄 Инициализация... Адрес: 0x%X", offset))
 
 	// Считать файл
 	data, err := os.ReadFile(filePath)
@@ -80,7 +80,7 @@ func (a *App) Flash(portName, filePath string) error {
 	}
 
 	a.emitProgress(10, "Файл загружен")
-	a.emitLog(fmt.Sprintf("📄 Загружен файл: %d байт", len(data)))
+	a.emitLog(fmt.Sprintf("📄 Загружен файл: %d байт (%.2f KB)", len(data), float64(len(data))/1024))
 
 	// Создать ESP32 флешер
 	a.emitProgress(20, "Подключение к ESP32...")
@@ -93,13 +93,10 @@ func (a *App) Flash(portName, filePath string) error {
 	defer flasher.Close()
 
 	// Прошить данные с прогрессом (начинается с 30%)
-	if err := flasher.FlashData(data, 0x10000, portName); err != nil {
+	if err := flasher.FlashData(data, uint32(offset), portName); err != nil {
 		a.emitProgress(0, "Ошибка прошивки")
 		return fmt.Errorf("failed to flash: %w", err)
 	}
-
-	a.emitProgress(100, "Прошивка завершена!")
-	a.emitLog("✅ Прошивка успешно завершена!")
 
 	return nil
 }

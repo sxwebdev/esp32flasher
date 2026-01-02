@@ -16,9 +16,9 @@ body {
 
 /* Контейнер */
 .container {
-  max-width: 1000px; /* Увеличиваем ширину еще больше */
+  max-width: 800px;
   margin: 0 auto;
-  padding: 20px;
+  padding: 12px;
   min-height: 100vh;
   display: flex;
   flex-direction: column;
@@ -27,27 +27,27 @@ body {
 /* Заголовок */
 .header {
   text-align: center;
-  margin-bottom: 30px;
+  margin-bottom: 12px;
   color: white;
 }
 
 .title {
-  font-size: 2.5rem;
+  font-size: 1.5rem;
   font-weight: 700;
-  margin-bottom: 10px;
+  margin-bottom: 4px;
   text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 15px;
+  gap: 10px;
 }
 
 .chip-icon {
-  font-size: 2rem;
+  font-size: 1.3rem;
 }
 
 .subtitle {
-  font-size: 1.1rem;
+  font-size: 0.9rem;
   opacity: 0.9;
   font-weight: 300;
 }
@@ -55,28 +55,28 @@ body {
 /* Основной контент */
 .main-content {
   background: white;
-  border-radius: 20px;
-  padding: 30px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.1);
+  border-radius: 12px;
+  padding: 16px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
   flex: 1;
 }
 
 /* Группы элементов управления */
 .control-group {
-  margin-bottom: 25px;
+  margin-bottom: 12px;
 }
 
 .label {
   display: block;
   font-weight: 600;
   color: #374151;
-  margin-bottom: 8px;
-  font-size: 0.95rem;
+  margin-bottom: 4px;
+  font-size: 0.85rem;
 }
 
 .input-row {
   display: flex;
-  gap: 12px;
+  gap: 8px;
   align-items: center;
   flex-wrap: wrap;
 }
@@ -93,11 +93,11 @@ body {
 .input,
 .select {
   flex: 1;
-  padding: 12px 16px;
-  border: 2px solid #e5e7eb;
-  border-radius: 12px;
-  font-size: 1rem;
-  transition: all 0.3s ease;
+  padding: 8px 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  transition: all 0.2s ease;
   background: white;
 }
 
@@ -115,24 +115,24 @@ body {
 
 /* Кнопки */
 .btn {
-  padding: 12px 20px;
+  padding: 8px 14px;
   border: none;
-  border-radius: 12px;
-  font-size: 1rem;
+  border-radius: 6px;
+  font-size: 0.85rem;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.3s ease;
+  transition: all 0.2s ease;
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   white-space: nowrap;
 }
 
 .btn-primary {
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   color: white;
-  padding: 16px 32px;
-  font-size: 1.1rem;
+  padding: 10px 24px;
+  font-size: 0.95rem;
   width: 100%;
   justify-content: center;
   box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
@@ -210,29 +210,29 @@ body {
 
 /* Контейнер лога */
 .log-container {
-  margin-top: 30px;
+  margin-top: 12px;
 }
 
 .log-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 12px;
+  margin-bottom: 6px;
   flex-wrap: wrap;
-  gap: 12px;
+  gap: 8px;
 }
 
 .log-controls {
   display: flex;
-  gap: 6px;
+  gap: 4px;
   flex-wrap: wrap;
 }
 
 /* Компактные кнопки */
 .btn-compact {
-  padding: 6px 12px;
-  font-size: 0.85rem;
-  border-radius: 8px;
+  padding: 4px 8px;
+  font-size: 0.75rem;
+  border-radius: 4px;
   min-width: auto;
   white-space: nowrap;
 }
@@ -266,40 +266,39 @@ body {
 }
 
 .log {
-  background: #f8fafc;
-  border: 2px solid #e2e8f0;
-  border-radius: 12px;
-  padding: 16px;
-  height: 350px; /* Увеличиваем высоту еще больше */
-  width: 100%; /* Полная ширина контейнера */
+  background: #1e1e1e;
+  border: 1px solid #333;
+  border-radius: 6px;
+  padding: 8px;
+  height: 280px;
+  width: 100%;
   overflow-y: auto;
   font-family: "SF Mono", Monaco, "Cascadia Code", "Roboto Mono", Consolas,
     "Courier New", monospace;
-  font-size: 0.8rem; /* Уменьшаем шрифт для больше текста */
-  line-height: 1.3;
-  color: #2d3748;
+  font-size: 0.7rem;
+  line-height: 1.2;
+  color: #00ff00;
   white-space: pre-wrap;
   word-wrap: break-word;
-  /* Убираем автоскролл - пользователь сам контролирует */
 }
 
 /* Скроллбар для лога */
 .log::-webkit-scrollbar {
-  width: 8px;
+  width: 6px;
 }
 
 .log::-webkit-scrollbar-track {
-  background: #f1f5f9;
-  border-radius: 4px;
+  background: #2d2d2d;
+  border-radius: 3px;
 }
 
 .log::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
-  border-radius: 4px;
+  background: #555;
+  border-radius: 3px;
 }
 
 .log::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
+  background: #777;
 }
 
 /* Адаптивность */

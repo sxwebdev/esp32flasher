@@ -8,14 +8,6 @@
   </head>
   <body>
     <div class="container">
-      <header class="header">
-        <h1 class="title">
-          <span class="chip-icon">🔧</span>
-          ESP32 Flasher
-        </h1>
-        <p class="subtitle">Простой инструмент для прошивки ESP32</p>
-      </header>
-
       <main class="main-content">
         <div class="control-group">
           <label class="label">COM-порт:</label>
@@ -46,6 +38,26 @@
         </div>
 
         <div class="control-group">
+          <label class="label">Адрес прошивки:</label>
+          <div class="input-row">
+            <select id="offsetSelect" class="select">
+              <option value="0x0">0x0 - Full image</option>
+              <option value="0x1000">0x1000 - Bootloader</option>
+              <option value="0x8000">0x8000 - Partitions</option>
+              <option value="0x10000" selected>0x10000 - App</option>
+              <option value="custom">Custom...</option>
+            </select>
+            <input
+              type="text"
+              id="customOffset"
+              class="input"
+              placeholder="0x..."
+              style="display: none; max-width: 120px"
+            />
+          </div>
+        </div>
+
+        <div class="control-group">
           <button id="btnFlash" class="btn btn-primary">
             ⚡ Прошить ESP32
           </button>
@@ -69,25 +81,10 @@
           <div class="log-header">
             <label class="label">Лог операций:</label>
             <div class="log-controls">
-              <button id="btnMonitor" class="btn btn-compact">
-                🔍 Мониторинг
-              </button>
-              <button
-                id="btnStopMonitor"
-                class="btn btn-compact btn-stop"
-                style="display: none"
-              >
-                ⏹️ Стоп
-              </button>
-              <button
-                id="btnAutoScroll"
-                class="btn btn-compact btn-toggle active"
-              >
-                📜 Автоскролл
-              </button>
-              <button id="btnClearLog" class="btn btn-compact">
-                🗑️ Очистить
-              </button>
+              <button id="btnMonitor" class="btn btn-compact">🔍 Monitor</button>
+              <button id="btnStopMonitor" class="btn btn-compact btn-stop" style="display: none">⏹ Stop</button>
+              <button id="btnAutoScroll" class="btn btn-compact btn-toggle active">📜 Auto</button>
+              <button id="btnClearLog" class="btn btn-compact">🗑 Clear</button>
             </div>
           </div>
           <pre id="log" class="log"></pre>

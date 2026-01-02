@@ -9,6 +9,8 @@ import { EventsOn } from "../wailsjs/runtime/runtime.js";
 
 const portSelect = document.getElementById("portSelect");
 const baudSelect = document.getElementById("baudSelect");
+const offsetSelect = document.getElementById("offsetSelect");
+const customOffset = document.getElementById("customOffset");
 const btnRefresh = document.getElementById("btnRefresh");
 const btnChoose = document.getElementById("btnChoose");
 const btnFlash = document.getElementById("btnFlash");
@@ -22,34 +24,101 @@ const progressContainer = document.getElementById("progressContainer");
 const progressBar = document.getElementById("progressBar");
 const progressText = document.getElementById("progressText");
 
+// Показ/скрытие поля для custom offset
+offsetSelect.addEventListener("change", () => {
+  if (offsetSelect.value === "custom") {
+    customOffset.style.display = "block";
+    customOffset.focus();
+  } else {
+    customOffset.style.display = "none";
+  }
+});
+
+// Получить текущий offset
+function getFlashOffset() {
+  if (offsetSelect.value === "custom") {
+    const val = customOffset.value.trim();
+    if (val.startsWith("0x") || val.startsWith("0X")) {
+      return parseInt(val, 16);
+    }
+    return parseInt(val, 10);
+  }
+  return parseInt(offsetSelect.value, 16);
+}
+
 let isMonitoring = false;
-let logUpdateTimeout = null; // Для батчинга обновлений лога
-let autoScrollEnabled = true; // Автоскролл включен по умолчанию
-let logLines = []; // Массив строк лога для эффективного управления
-const MAX_LOG_LINES = 1000; // Увеличиваем лимит строк
+let autoScrollEnabled = true;
+let logLines = [];
+const MAX_LOG_LINES = 300;
+
+// Throttling для обновления DOM
+let pendingLines = [];
+let updateScheduled = false;
+let lastUpdateTime = 0;
+const MIN_UPDATE_INTERVAL = 100; // Минимум 100мс между обновлениями
+
+// Запланировать обновление DOM с throttling
+function scheduleUpdate() {
+  if (updateScheduled) return;
+
+  const now = Date.now();
+  const timeSinceLastUpdate = now - lastUpdateTime;
+
+  if (timeSinceLastUpdate < MIN_UPDATE_INTERVAL) {
+    // Откладываем обновление
+    updateScheduled = true;
+    setTimeout(() => {
+      updateScheduled = false;
+      flushPendingLines();
+    }, MIN_UPDATE_INTERVAL - timeSinceLastUpdate);
+  } else {
+    flushPendingLines();
+  }
+}
+
+// Применить накопленные строки к DOM
+function flushPendingLines() {
+  if (pendingLines.length === 0) return;
+
+  lastUpdateTime = Date.now();
+
+  // Добавляем накопленные строки
+  logLines.push(...pendingLines);
+  pendingLines = [];
+
+  // Ограничиваем количество строк
+  if (logLines.length > MAX_LOG_LINES) {
+    logLines = logLines.slice(-MAX_LOG_LINES);
+  }
+
+  // Обновляем DOM один раз
+  logArea.textContent = logLines.join("\n");
+
+  // Автоскролл
+  if (autoScrollEnabled) {
+    logArea.scrollTop = logArea.scrollHeight;
+  }
+}
+
+// Форматирование времени с миллисекундами
+function formatTime(date) {
+  const h = String(date.getHours()).padStart(2, '0');
+  const m = String(date.getMinutes()).padStart(2, '0');
+  const s = String(date.getSeconds()).padStart(2, '0');
+  const ms = String(date.getMilliseconds()).padStart(3, '0');
+  return `${h}:${m}:${s}.${ms}`;
+}
 
 // Залить лог
 function log(msg) {
-  const timestamp = new Date().toLocaleTimeString();
+  const timestamp = formatTime(new Date());
   addLogLine(`[${timestamp}] ${msg}`);
 }
 
 // Эффективное добавление строки в лог
 function addLogLine(line) {
-  logLines.push(line);
-
-  // Ограничиваем количество строк (автоочистка как в терминале)
-  if (logLines.length > MAX_LOG_LINES) {
-    logLines = logLines.slice(-MAX_LOG_LINES);
-  }
-
-  // Сразу обновляем отображение
-  logArea.textContent = logLines.join("\n");
-
-  // Автоскролл если включен
-  if (autoScrollEnabled) {
-    logArea.scrollTop = logArea.scrollHeight;
-  }
+  pendingLines.push(line);
+  scheduleUpdate();
 }
 
 // Обновить прогресс
@@ -81,24 +150,9 @@ EventsOn("flash-log", (message) => {
 
 // События мониторинга порта
 EventsOn("monitor-data", (data) => {
-  // Данные уже приходят построчно, сразу отображаем
   if (data.trim()) {
-    const timestamp = new Date().toLocaleTimeString();
-    const logLine = `[${timestamp}] ${data.trim()}`;
-
-    // Добавляем строку и сразу ограничиваем количество
-    logLines.push(logLine);
-    if (logLines.length > MAX_LOG_LINES) {
-      logLines = logLines.slice(-MAX_LOG_LINES);
-    }
-
-    // Сразу обновляем отображение без батчинга
-    logArea.textContent = logLines.join("\n");
-
-    // Автоскролл если включен
-    if (autoScrollEnabled) {
-      logArea.scrollTop = logArea.scrollHeight;
-    }
+    const timestamp = formatTime(new Date());
+    addLogLine(`[${timestamp}] ${data.trim()}`);
   }
 });
 
@@ -145,8 +199,15 @@ btnChoose.addEventListener("click", async () => {
 btnFlash.addEventListener("click", async () => {
   const port = portSelect.value;
   const file = filePath.value;
+  const offset = getFlashOffset();
+
   if (!port || !file) {
     alert("Укажите порт и файл!");
+    return;
+  }
+
+  if (isNaN(offset) || offset < 0) {
+    alert("Некорректный адрес прошивки!");
     return;
   }
 
@@ -162,16 +223,18 @@ btnFlash.addEventListener("click", async () => {
   btnMonitor.disabled = true;
   portSelect.disabled = true;
   baudSelect.disabled = true;
+  offsetSelect.disabled = true;
+  customOffset.disabled = true;
 
   // Очищаем лог и показываем прогресс
   logArea.textContent = "";
+  logLines = [];
   showProgress(true);
 
-  log(`🚀 Начинаем прошивку ${file} → ${port}`);
+  log(`🚀 Начинаем прошивку ${file} → ${port} @ 0x${offset.toString(16).toUpperCase()}`);
 
   try {
-    await Flash(port, file);
-    log("✅ Прошивка успешно завершена!");
+    await Flash(port, file, offset);
     setTimeout(() => {
       alert("Прошивка завершена успешно!");
     }, 100);
@@ -191,6 +254,8 @@ btnFlash.addEventListener("click", async () => {
       btnMonitor.disabled = false;
       portSelect.disabled = false;
       baudSelect.disabled = false;
+      offsetSelect.disabled = false;
+      customOffset.disabled = false;
     }, 1000); // Задержка, чтобы пользователь увидел финальное состояние
   }
 });
@@ -244,17 +309,12 @@ function stopMonitoring() {
   btnFlash.disabled = false;
   portSelect.disabled = false;
   baudSelect.disabled = false;
-
-  // Очищаем таймер обновления лога если он есть
-  if (logUpdateTimeout) {
-    clearTimeout(logUpdateTimeout);
-    logUpdateTimeout = null;
-  }
 }
 
 // Кнопка очистки лога
 btnClearLog.addEventListener("click", () => {
-  logLines = []; // Очищаем массив строк
+  logLines = [];
+  pendingLines = [];
   logArea.textContent = "";
   log("🗑️ Лог очищен");
 });
@@ -265,16 +325,13 @@ btnAutoScroll.addEventListener("click", () => {
 
   if (autoScrollEnabled) {
     btnAutoScroll.classList.add("active");
-    btnAutoScroll.textContent = "📜 Автоскролл";
-    // Если включили автоскролл, сразу прокручиваем вниз
+    btnAutoScroll.textContent = "📜 Auto";
     requestAnimationFrame(() => {
       logArea.scrollTop = logArea.scrollHeight;
     });
-    log("📜 Автоскролл включен");
   } else {
     btnAutoScroll.classList.remove("active");
-    btnAutoScroll.textContent = "📜 Автоскролл";
-    log("⏸️ Автоскролл отключен");
+    btnAutoScroll.textContent = "📜 Auto";
   }
 });
 
@@ -284,10 +341,10 @@ btnRefresh.addEventListener("click", refreshPorts);
 // Инициализируем состояние кнопки автоскролла
 if (autoScrollEnabled) {
   btnAutoScroll.classList.add("active");
-  btnAutoScroll.textContent = "📜 Автоскролл";
+  btnAutoScroll.textContent = "📜 Auto";
 } else {
   btnAutoScroll.classList.remove("active");
-  btnAutoScroll.textContent = "📜 Автоскролл";
+  btnAutoScroll.textContent = "📜 Auto";
 }
 
 refreshPorts();
