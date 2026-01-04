@@ -17,6 +17,7 @@ const btnFlash = document.getElementById("btnFlash");
 const btnMonitor = document.getElementById("btnMonitor");
 const btnStopMonitor = document.getElementById("btnStopMonitor");
 const btnClearLog = document.getElementById("btnClearLog");
+const btnCopyLog = document.getElementById("btnCopyLog");
 const btnAutoScroll = document.getElementById("btnAutoScroll");
 const filePath = document.getElementById("filePath");
 const logArea = document.getElementById("log");
@@ -286,11 +287,15 @@ btnMonitor.addEventListener("click", async () => {
 
 // Stop monitor button
 btnStopMonitor.addEventListener("click", async () => {
+  // Disable button immediately to prevent double-click
+  btnStopMonitor.disabled = true;
   try {
     await StopMonitor();
-    stopMonitoring();
   } catch (e) {
     log("❌ Monitor stop error: " + e);
+  } finally {
+    stopMonitoring();
+    btnStopMonitor.disabled = false;
   }
 });
 
@@ -312,6 +317,21 @@ function stopMonitoring() {
   portSelect.disabled = false;
   baudSelect.disabled = false;
 }
+
+// Copy log button
+btnCopyLog.addEventListener("click", async () => {
+  const text = logLines.join("\n");
+  try {
+    await navigator.clipboard.writeText(text);
+    const originalText = btnCopyLog.textContent;
+    btnCopyLog.textContent = "✅ Copied";
+    setTimeout(() => {
+      btnCopyLog.textContent = originalText;
+    }, 1500);
+  } catch (e) {
+    log("❌ Copy error: " + e);
+  }
+});
 
 // Clear log button
 btnClearLog.addEventListener("click", () => {

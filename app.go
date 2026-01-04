@@ -108,7 +108,8 @@ func (a *App) MonitorPort(portName string, baudRate int) error {
 		a.StopMonitor()
 	}
 
-	// Open port for monitoring
+	// Open port for monitoring with retry logic
+	// After flashing, the port may need time to be released by the OS
 	mode := &serialport.Mode{
 		BaudRate: baudRate,
 		Parity:   serialport.NoParity,
@@ -116,7 +117,16 @@ func (a *App) MonitorPort(portName string, baudRate int) error {
 		StopBits: serialport.OneStopBit,
 	}
 
-	port, err := serialport.Open(portName, mode)
+	var port serialport.Port
+	var err error
+	for range 5 {
+		port, err = serialport.Open(portName, mode)
+		if err == nil {
+			break
+		}
+		// Wait before retry - port may still be held by previous operation
+		time.Sleep(200 * time.Millisecond)
+	}
 	if err != nil {
 		return fmt.Errorf("failed to open port for monitoring: %w", err)
 	}
@@ -124,6 +134,9 @@ func (a *App) MonitorPort(portName string, baudRate int) error {
 	a.monitorPort = port
 	a.stopMonitor = make(chan bool, 1)
 	a.lineBuffer = "" // Clear line buffer
+
+	// Clear any garbage in the input buffer
+	port.ResetInputBuffer()
 
 	a.emitLog(fmt.Sprintf("🔍 Starting monitor on %s (%d baud)", portName, baudRate))
 	a.emitLog("💡 Press 'Stop' to stop monitoring")
@@ -138,7 +151,7 @@ func (a *App) MonitorPort(portName string, baudRate int) error {
 			}
 		}()
 
-		buffer := make([]byte, 1024)
+		buffer := make([]byte, 256) // Smaller buffer to reduce processing load
 
 		for {
 			select {
@@ -172,8 +185,21 @@ func (a *App) MonitorPort(portName string, baudRate int) error {
 				}
 
 				if n > 0 {
-					// Add new data to buffer
-					a.lineBuffer += string(buffer[:n])
+					// Filter out non-printable characters
+					// Keep: newline, carriage return, tab, printable ASCII (32-126), and UTF-8 (128-255)
+					filtered := make([]byte, 0, n)
+					for _, b := range buffer[:n] {
+						if b == '\n' || b == '\r' || b == '\t' || (b >= 32 && b < 127) || b >= 128 {
+							filtered = append(filtered, b)
+						}
+					}
+
+					if len(filtered) == 0 {
+						continue
+					}
+
+					// Add filtered data to buffer
+					a.lineBuffer += string(filtered)
 
 					// Process all complete lines
 					for {
@@ -195,7 +221,7 @@ func (a *App) MonitorPort(portName string, baudRate int) error {
 					}
 
 					// If buffer gets too large without \n, send as is and clear
-					if len(a.lineBuffer) > 1000 {
+					if len(a.lineBuffer) > 500 {
 						line := strings.TrimSpace(a.lineBuffer)
 						if line != "" {
 							runtime.EventsEmit(a.ctx, "monitor-data", line)
@@ -212,24 +238,25 @@ func (a *App) MonitorPort(portName string, baudRate int) error {
 
 // StopMonitor stops port monitoring
 func (a *App) StopMonitor() {
-	// First send stop signal
+	// Send stop signal first
 	if a.stopMonitor != nil {
 		select {
 		case a.stopMonitor <- true:
 		default:
 			// Channel already closed or full
 		}
-		close(a.stopMonitor)
-		a.stopMonitor = nil
 	}
 
-	// Give goroutine time to finish
-	time.Sleep(200 * time.Millisecond)
-
-	// Only then close the port
+	// Close port immediately - this will cause Read() to return error and exit goroutine
 	if a.monitorPort != nil {
 		a.monitorPort.Close()
 		a.monitorPort = nil
+	}
+
+	// Now safe to close channel
+	if a.stopMonitor != nil {
+		close(a.stopMonitor)
+		a.stopMonitor = nil
 	}
 
 	a.lineBuffer = "" // Clear line buffer
