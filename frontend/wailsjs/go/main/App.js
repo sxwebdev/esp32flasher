@@ -10,6 +10,10 @@ export function Flash(arg1, arg2, arg3) {
   return window['go']['main']['App']['Flash'](arg1, arg2, arg3);
 }
 
+export function FlashMultiple(arg1, arg2) {
+  return window['go']['main']['App']['FlashMultiple'](arg1, arg2);
+}
+
 export function ListPorts() {
   return window['go']['main']['App']['ListPorts']();
 }

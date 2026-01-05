@@ -301,6 +301,62 @@ body {
   background: #777;
 }
 
+/* Additional files section */
+.additional-files {
+  border-top: 1px solid #e5e7eb;
+  padding-top: 12px;
+}
+
+.additional-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.additional-header .label {
+  margin-bottom: 0;
+}
+
+#additionalFilesContainer {
+  background: #f9fafb;
+  border-radius: 6px;
+  padding: 10px;
+}
+
+.additional-file-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.additional-file-row:last-child {
+  margin-bottom: 0;
+}
+
+.file-label {
+  font-size: 0.8rem;
+  color: #6b7280;
+  min-width: 130px;
+}
+
+.file-input-small {
+  flex: 1;
+  padding: 6px 10px;
+  font-size: 0.8rem;
+}
+
+.btn-clear {
+  background: #fee2e2;
+  color: #dc2626;
+  padding: 4px 8px;
+}
+
+.btn-clear:hover {
+  background: #fecaca;
+}
+
 /* Адаптивность */
 @media (max-width: 640px) {
   .container {

@@ -1,6 +1,7 @@
 import {
   ListPorts,
   Flash,
+  FlashMultiple,
   ChooseFile,
   MonitorPort,
   StopMonitor,
@@ -24,6 +25,14 @@ const logArea = document.getElementById("log");
 const progressContainer = document.getElementById("progressContainer");
 const progressBar = document.getElementById("progressBar");
 const progressText = document.getElementById("progressText");
+const btnToggleAdditional = document.getElementById("btnToggleAdditional");
+const additionalFilesContainer = document.getElementById("additionalFilesContainer");
+const bootloaderPath = document.getElementById("bootloaderPath");
+const partitionsPath = document.getElementById("partitionsPath");
+const btnChooseBootloader = document.getElementById("btnChooseBootloader");
+const btnChoosePartitions = document.getElementById("btnChoosePartitions");
+const btnClearBootloader = document.getElementById("btnClearBootloader");
+const btnClearPartitions = document.getElementById("btnClearPartitions");
 
 // Show/hide custom offset field
 offsetSelect.addEventListener("change", () => {
@@ -183,6 +192,13 @@ async function refreshPorts() {
   }
 }
 
+// Toggle additional files section
+btnToggleAdditional.addEventListener("click", () => {
+  const isVisible = additionalFilesContainer.style.display !== "none";
+  additionalFilesContainer.style.display = isVisible ? "none" : "block";
+  btnToggleAdditional.textContent = isVisible ? "+ Add" : "- Hide";
+});
+
 // File selection
 btnChoose.addEventListener("click", async () => {
   try {
@@ -196,11 +212,49 @@ btnChoose.addEventListener("click", async () => {
   }
 });
 
+// Bootloader file selection
+btnChooseBootloader.addEventListener("click", async () => {
+  try {
+    const res = await ChooseFile();
+    if (res) {
+      bootloaderPath.value = res;
+      log("Bootloader: " + res);
+    }
+  } catch (e) {
+    log("File selection error: " + e);
+  }
+});
+
+// Partitions file selection
+btnChoosePartitions.addEventListener("click", async () => {
+  try {
+    const res = await ChooseFile();
+    if (res) {
+      partitionsPath.value = res;
+      log("Partitions: " + res);
+    }
+  } catch (e) {
+    log("File selection error: " + e);
+  }
+});
+
+// Clear bootloader
+btnClearBootloader.addEventListener("click", () => {
+  bootloaderPath.value = "";
+});
+
+// Clear partitions
+btnClearPartitions.addEventListener("click", () => {
+  partitionsPath.value = "";
+});
+
 // Flash button
 btnFlash.addEventListener("click", async () => {
   const port = portSelect.value;
   const file = filePath.value;
   const offset = getFlashOffset();
+  const bootloader = bootloaderPath.value;
+  const partitions = partitionsPath.value;
 
   if (!port || !file) {
     alert("Select port and file!");
@@ -226,18 +280,51 @@ btnFlash.addEventListener("click", async () => {
   baudSelect.disabled = true;
   offsetSelect.disabled = true;
   customOffset.disabled = true;
+  btnChooseBootloader.disabled = true;
+  btnChoosePartitions.disabled = true;
+  btnClearBootloader.disabled = true;
+  btnClearPartitions.disabled = true;
 
   // Clear log and show progress
   logArea.textContent = "";
   logLines = [];
   showProgress(true);
 
-  log(
-    `🚀 Starting flash ${file} → ${port} @ 0x${offset.toString(16).toUpperCase()}`
-  );
+  // Build list of files to flash
+  const hasAdditionalFiles = bootloader || partitions;
 
   try {
-    await Flash(port, file, offset);
+    if (hasAdditionalFiles) {
+      // Use FlashMultiple for multiple files
+      const files = [];
+
+      // Bootloader first (0x1000)
+      if (bootloader) {
+        files.push({ path: bootloader, offset: 0x1000 });
+      }
+
+      // Partition table (0x8000)
+      if (partitions) {
+        files.push({ path: partitions, offset: 0x8000 });
+      }
+
+      // Main app last
+      files.push({ path: file, offset: offset });
+
+      log(`🚀 Flashing ${files.length} files to ${port}`);
+      files.forEach(f => {
+        log(`   📄 ${f.path} @ 0x${f.offset.toString(16).toUpperCase()}`);
+      });
+
+      await FlashMultiple(port, files);
+    } else {
+      // Single file flash
+      log(
+        `🚀 Starting flash ${file} → ${port} @ 0x${offset.toString(16).toUpperCase()}`
+      );
+      await Flash(port, file, offset);
+    }
+
     setTimeout(() => {
       alert("Flash completed successfully!");
     }, 100);
@@ -259,6 +346,10 @@ btnFlash.addEventListener("click", async () => {
       baudSelect.disabled = false;
       offsetSelect.disabled = false;
       customOffset.disabled = false;
+      btnChooseBootloader.disabled = false;
+      btnChoosePartitions.disabled = false;
+      btnClearBootloader.disabled = false;
+      btnClearPartitions.disabled = false;
     }, 1000); // Delay to show final state
   }
 });

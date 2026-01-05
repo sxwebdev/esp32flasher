@@ -63,6 +63,59 @@ func (a *App) emitLog(message string) {
 	runtime.EventsEmit(a.ctx, "flash-log", message)
 }
 
+// FlashFile represents a file to flash with its address
+type FlashFile struct {
+	Path   string `json:"path"`
+	Offset int    `json:"offset"`
+}
+
+// FlashMultiple writes multiple firmware files to ESP32 at specified addresses
+func (a *App) FlashMultiple(portName string, files []FlashFile) error {
+	if len(files) == 0 {
+		return fmt.Errorf("no files to flash")
+	}
+
+	// Check all files exist
+	for _, f := range files {
+		if _, err := os.Stat(f.Path); os.IsNotExist(err) {
+			return fmt.Errorf("file does not exist: %s", f.Path)
+		}
+	}
+
+	a.emitProgress(0, "Starting flash...")
+	a.emitLog(fmt.Sprintf("🔄 Flashing %d file(s)...", len(files)))
+
+	// Create ESP32 flasher
+	a.emitProgress(10, "Connecting to ESP32...")
+	a.emitLog("🔗 Connecting to ESP32...")
+
+	flasher, err := NewESP32FlasherWithProgress(portName, a)
+	if err != nil {
+		return fmt.Errorf("failed to create flasher: %w", err)
+	}
+	defer flasher.Close()
+
+	// Flash each file
+	totalFiles := len(files)
+	for i, f := range files {
+		// Read file
+		data, err := os.ReadFile(f.Path)
+		if err != nil {
+			return fmt.Errorf("failed to read file %s: %w", f.Path, err)
+		}
+
+		a.emitLog(fmt.Sprintf("📄 [%d/%d] %s: %d bytes @ 0x%X", i+1, totalFiles, f.Path, len(data), f.Offset))
+
+		// Flash data
+		if err := flasher.FlashData(data, uint32(f.Offset), portName); err != nil {
+			a.emitProgress(0, "Flash error")
+			return fmt.Errorf("failed to flash %s: %w", f.Path, err)
+		}
+	}
+
+	return nil
+}
+
 // Flash writes firmware to ESP32 at specified address using built-in esptool implementation
 func (a *App) Flash(portName, filePath string, offset int) error {
 	// Check if file exists

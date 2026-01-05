@@ -41,10 +41,10 @@
           <label class="label">Flash address:</label>
           <div class="input-row">
             <select id="offsetSelect" class="select">
-              <option value="0x0">0x0 - Full image</option>
+              <option value="0x0">0x0 - Merged (full image)</option>
+              <option value="0x10000" selected>0x10000 - App only</option>
               <option value="0x1000">0x1000 - Bootloader</option>
               <option value="0x8000">0x8000 - Partitions</option>
-              <option value="0x10000" selected>0x10000 - App</option>
               <option value="custom">Custom...</option>
             </select>
             <input
@@ -54,6 +54,27 @@
               placeholder="0x..."
               style="display: none; max-width: 120px"
             />
+          </div>
+        </div>
+
+        <div class="control-group additional-files">
+          <div class="additional-header">
+            <label class="label">Additional files (optional):</label>
+            <button id="btnToggleAdditional" class="btn btn-compact">+ Add</button>
+          </div>
+          <div id="additionalFilesContainer" style="display: none;">
+            <div class="additional-file-row">
+              <span class="file-label">Bootloader (0x1000):</span>
+              <input type="text" id="bootloaderPath" readonly class="input file-input-small" placeholder="Not selected" />
+              <button id="btnChooseBootloader" class="btn btn-compact">📁</button>
+              <button id="btnClearBootloader" class="btn btn-compact btn-clear">✕</button>
+            </div>
+            <div class="additional-file-row">
+              <span class="file-label">Partitions (0x8000):</span>
+              <input type="text" id="partitionsPath" readonly class="input file-input-small" placeholder="Not selected" />
+              <button id="btnChoosePartitions" class="btn btn-compact">📁</button>
+              <button id="btnClearPartitions" class="btn btn-compact btn-clear">✕</button>
+            </div>
           </div>
         </div>
 
