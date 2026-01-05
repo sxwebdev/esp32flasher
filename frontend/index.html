@@ -19,7 +19,7 @@
               <option value="460800">460800</option>
               <option value="921600">921600</option>
             </select>
-            <button id="btnRefresh" class="btn btn-secondary">🔄</button>
+            <button id="btnRefresh" class="btn btn-secondary">Refresh</button>
           </div>
         </div>
 
@@ -33,7 +33,7 @@
               class="input file-input"
               placeholder="Select file..."
             />
-            <button id="btnChoose" class="btn btn-secondary">📁 Browse</button>
+            <button id="btnChoose" class="btn btn-secondary">Browse</button>
           </div>
         </div>
 
@@ -66,20 +66,20 @@
             <div class="additional-file-row">
               <span class="file-label">Bootloader (0x1000):</span>
               <input type="text" id="bootloaderPath" readonly class="input file-input-small" placeholder="Not selected" />
-              <button id="btnChooseBootloader" class="btn btn-compact">📁</button>
+              <button id="btnChooseBootloader" class="btn btn-compact">...</button>
               <button id="btnClearBootloader" class="btn btn-compact btn-clear">✕</button>
             </div>
             <div class="additional-file-row">
               <span class="file-label">Partitions (0x8000):</span>
               <input type="text" id="partitionsPath" readonly class="input file-input-small" placeholder="Not selected" />
-              <button id="btnChoosePartitions" class="btn btn-compact">📁</button>
+              <button id="btnChoosePartitions" class="btn btn-compact">...</button>
               <button id="btnClearPartitions" class="btn btn-compact btn-clear">✕</button>
             </div>
           </div>
         </div>
 
         <div class="control-group">
-          <button id="btnFlash" class="btn btn-primary">⚡ Flash ESP32</button>
+          <button id="btnFlash" class="btn btn-primary">Flash ESP32</button>
         </div>
 
         <div
@@ -100,24 +100,11 @@
           <div class="log-header">
             <label class="label">Log:</label>
             <div class="log-controls">
-              <button id="btnMonitor" class="btn btn-compact">
-                🔍 Monitor
-              </button>
-              <button
-                id="btnStopMonitor"
-                class="btn btn-compact btn-stop"
-                style="display: none"
-              >
-                ⏹ Stop
-              </button>
-              <button
-                id="btnAutoScroll"
-                class="btn btn-compact btn-toggle active"
-              >
-                📜 Auto
-              </button>
-              <button id="btnCopyLog" class="btn btn-compact">📋 Copy</button>
-              <button id="btnClearLog" class="btn btn-compact">🗑 Clear</button>
+              <button id="btnMonitor" class="btn btn-compact">Monitor</button>
+              <button id="btnStopMonitor" class="btn btn-compact btn-stop" style="display: none">Stop</button>
+              <button id="btnAutoScroll" class="btn btn-compact btn-toggle active">Auto</button>
+              <button id="btnCopyLog" class="btn btn-compact">Copy</button>
+              <button id="btnClearLog" class="btn btn-compact">Clear</button>
             </div>
           </div>
           <pre id="log" class="log"></pre>

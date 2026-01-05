@@ -438,13 +438,13 @@ btnAutoScroll.addEventListener("click", () => {
 
   if (autoScrollEnabled) {
     btnAutoScroll.classList.add("active");
-    btnAutoScroll.textContent = "📜 Auto";
+    btnAutoScroll.textContent = "Auto";
     requestAnimationFrame(() => {
       logArea.scrollTop = logArea.scrollHeight;
     });
   } else {
     btnAutoScroll.classList.remove("active");
-    btnAutoScroll.textContent = "📜 Auto";
+    btnAutoScroll.textContent = "Auto";
   }
 });
 
@@ -454,10 +454,10 @@ btnRefresh.addEventListener("click", refreshPorts);
 // Initialize auto-scroll button state
 if (autoScrollEnabled) {
   btnAutoScroll.classList.add("active");
-  btnAutoScroll.textContent = "📜 Auto";
+  btnAutoScroll.textContent = "Auto";
 } else {
   btnAutoScroll.classList.remove("active");
-  btnAutoScroll.textContent = "📜 Auto";
+  btnAutoScroll.textContent = "Auto";
 }
 
 refreshPorts();
