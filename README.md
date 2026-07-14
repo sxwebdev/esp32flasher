@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="screenshots/promo.webp" alt="espflasher — a self-contained ESP32 flasher written in Go with a Wails desktop UI" width="100%">
+  <img src="screenshots/promo.png" alt="espflasher — a self-contained ESP32 flasher written in Go with a Wails desktop UI" width="100%">
 </p>
 
 # ESP32 Flasher
