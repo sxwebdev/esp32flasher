@@ -18,6 +18,16 @@ type fakeSerialPort struct {
 	writes     [][]byte
 }
 
+type fakeModemControl struct {
+	port *fakeSerialPort
+}
+
+func (c *fakeModemControl) Set(dtr, rts bool) error {
+	return c.port.record(fmt.Sprintf("DTR=%t,RTS=%t", dtr, rts))
+}
+
+func (c *fakeModemControl) Close() error { return c.port.record("CONTROL_CLOSE") }
+
 func (p *fakeSerialPort) record(action string) error {
 	p.actions = append(p.actions, action)
 	if action == p.failAction {
@@ -45,7 +55,7 @@ func (p *fakeSerialPort) ResetOutputBuffer() error           { return nil }
 func (p *fakeSerialPort) SetDTR(v bool) error                { return p.record(fmt.Sprintf("DTR=%t", v)) }
 func (p *fakeSerialPort) SetRTS(v bool) error                { return p.record(fmt.Sprintf("RTS=%t", v)) }
 func (p *fakeSerialPort) SetReadTimeout(time.Duration) error { return nil }
-func (p *fakeSerialPort) Close() error                       { return nil }
+func (p *fakeSerialPort) Close() error                       { return p.record("PORT_CLOSE") }
 func (p *fakeSerialPort) Break(time.Duration) error          { return nil }
 func (p *fakeSerialPort) GetModemStatusBits() (*serial.ModemStatusBits, error) {
 	return &serial.ModemStatusBits{}, nil

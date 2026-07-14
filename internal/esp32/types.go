@@ -45,6 +45,7 @@ const (
 	SERIAL_FLASHER_RESET_HOLD_TIME_MS = 100
 	SERIAL_FLASHER_BOOT_HOLD_TIME_MS  = 50
 	SERIAL_APPLICATION_STARTUP_WAIT   = 4 * time.Second
+	ESP_SYNC_ATTEMPTS                 = 5
 )
 
 // ChipType identifies an ESP32 family member.
@@ -80,6 +81,11 @@ type Callbacks struct {
 	Log      func(message string)
 }
 
+type modemControl interface {
+	Set(dtr, rts bool) error
+	Close() error
+}
+
 func (c *Callbacks) emitProgress(progress int, message string) {
 	if c != nil && c.Progress != nil {
 		c.Progress(progress, message)
@@ -95,6 +101,7 @@ func (c *Callbacks) emitLog(message string) {
 // ESP32Flasher communicates with the ESP32 ROM bootloader.
 type ESP32Flasher struct {
 	port               serial.Port
+	modemControl       modemControl
 	callback           *Callbacks
 	chipType           ChipType
 	blockSize          uint32

@@ -285,7 +285,7 @@ func (f *ESP32Flasher) sync() error {
 		syncData[i] = 0x55
 	}
 
-	for attempt := 1; attempt <= 3; attempt++ {
+	for attempt := 1; attempt <= ESP_SYNC_ATTEMPTS; attempt++ {
 		f.rxBuffer = nil
 		if err := f.port.ResetInputBuffer(); err != nil {
 			return fmt.Errorf("reset input buffer: %w", err)
@@ -297,7 +297,7 @@ func (f *ESP32Flasher) sync() error {
 		_, err := f.readResponseForCommand(ESP_SYNC, time.Second)
 		if err != nil {
 			if f.callback != nil {
-				f.callback.emitLog(fmt.Sprintf("⚠️ SYNC attempt %d/3: %v", attempt, err))
+				f.callback.emitLog(fmt.Sprintf("⚠️ SYNC attempt %d/%d: %v", attempt, ESP_SYNC_ATTEMPTS, err))
 			}
 			continue
 		}

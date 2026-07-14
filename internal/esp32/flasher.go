@@ -3,6 +3,7 @@ package esp32
 import (
 	"crypto/md5"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"time"
 
@@ -22,21 +23,31 @@ func New(portName string, callback *Callbacks) (*ESP32Flasher, error) {
 		},
 	}
 
+	// Open a second descriptor before serial.Open acquires exclusive access.
+	// Unix needs it to set DTR and RTS atomically for CP2102 DevKit circuits.
+	control, controlErr := openModemControl(portName)
 	port, err := serial.Open(portName, mode)
 	if err != nil {
+		if control != nil {
+			_ = control.Close()
+		}
 		return nil, fmt.Errorf("failed to open port: %w", err)
 	}
 
 	flasher := &ESP32Flasher{
 		port:               port,
+		modemControl:       control,
 		callback:           callback,
 		chipType:           CHIP_UNKNOWN,
 		blockSize:          ESP_FLASH_WRITE_SIZE,
 		allowSpeedIncrease: true,
 	}
+	if controlErr != nil && callback != nil {
+		callback.emitLog(fmt.Sprintf("⚠️ Atomic DTR/RTS control is unavailable: %v", controlErr))
+	}
 
 	if err := flasher.enterBootloader(); err != nil {
-		port.Close()
+		_ = flasher.Close()
 		return nil, fmt.Errorf("failed to enter bootloader: %w", err)
 	}
 
@@ -92,7 +103,12 @@ func NewManual(portName string, callback *Callbacks) (*ESP32Flasher, error) {
 
 // Close releases the serial port.
 func (f *ESP32Flasher) Close() error {
-	return f.port.Close()
+	var controlErr error
+	if f.modemControl != nil {
+		controlErr = f.modemControl.Close()
+		f.modemControl = nil
+	}
+	return errors.Join(controlErr, f.port.Close())
 }
 
 // enterBootloader resets the ESP32 into download mode.
@@ -114,6 +130,8 @@ func (f *ESP32Flasher) enterBootloader() error {
 		attempts int
 		reset    func() error
 	}{
+		{name: "tight DTR/RTS", attempts: 1, reset: f.tightReset},
+		{name: "slow tight DTR/RTS", attempts: 1, reset: f.slowTightReset},
 		{name: "DevKit auto-reset", attempts: 1, reset: f.hardReset},
 		{name: "direct DTR→GPIO0, RTS→EN", attempts: 3, reset: f.directReset},
 	}
@@ -126,7 +144,8 @@ func (f *ESP32Flasher) enterBootloader() error {
 			if err := strategy.reset(); err != nil {
 				return fmt.Errorf("%s control line reset failed: %w", strategy.name, err)
 			}
-			if f.testSync() {
+			f.logBootBanner()
+			if err := f.sync(); err == nil {
 				if f.callback != nil {
 					f.callback.emitLog(fmt.Sprintf("✅ ESP32 responded from the ROM bootloader (%s)", strategy.name))
 				}
@@ -140,6 +159,73 @@ func (f *ESP32Flasher) enterBootloader() error {
 	}
 
 	return fmt.Errorf("failed to enter bootloader mode")
+}
+
+func (f *ESP32Flasher) logBootBanner() {
+	if f.callback == nil {
+		return
+	}
+	if err := f.port.SetReadTimeout(100 * time.Millisecond); err != nil {
+		return
+	}
+	buffer := make([]byte, 1024)
+	n, err := f.port.Read(buffer)
+	if err == nil && n > 0 {
+		f.callback.emitLog(fmt.Sprintf("🔍 ROM boot output: %q", buffer[:n]))
+	}
+}
+
+// tightReset follows esptool's Unix-tight state transitions. Passing through
+// the both-asserted state before holding EN low is required by some CP2102
+// DevKit/WROOM reset circuits.
+func (f *ESP32Flasher) tightReset() error {
+	if f.callback != nil {
+		f.callback.emitLog("🔄 Tight DTR/RTS reset sequence")
+	}
+	return f.tightResetWithSleepAndDelay(time.Sleep, SERIAL_FLASHER_BOOT_HOLD_TIME_MS*time.Millisecond)
+}
+
+func (f *ESP32Flasher) slowTightReset() error {
+	if f.callback != nil {
+		f.callback.emitLog("🔄 Slow tight DTR/RTS reset sequence")
+	}
+	return f.tightResetWithSleepAndDelay(time.Sleep, (SERIAL_FLASHER_BOOT_HOLD_TIME_MS+500)*time.Millisecond)
+}
+
+func (f *ESP32Flasher) tightResetWithSleepAndDelay(sleep func(time.Duration), bootDelay time.Duration) error {
+	if err := f.setDTRAndRTS(false, false); err != nil {
+		return fmt.Errorf("release DTR/RTS before tight reset: %w", err)
+	}
+	if err := f.setDTRAndRTS(true, true); err != nil {
+		return fmt.Errorf("assert DTR/RTS for tight reset: %w", err)
+	}
+	if err := f.setDTRAndRTS(false, true); err != nil {
+		return fmt.Errorf("hold reset with boot pin released: %w", err)
+	}
+	sleep(SERIAL_FLASHER_RESET_HOLD_TIME_MS * time.Millisecond)
+	if err := f.setDTRAndRTS(true, false); err != nil {
+		return fmt.Errorf("release reset in download mode: %w", err)
+	}
+	sleep(bootDelay)
+	if err := f.setDTRAndRTS(false, false); err != nil {
+		return fmt.Errorf("release DTR/RTS after tight reset: %w", err)
+	}
+	// Matches esptool's final DTR release, needed by some Unix drivers.
+	if err := f.port.SetDTR(false); err != nil {
+		return fmt.Errorf("ensure boot pin is released after tight reset: %w", err)
+	}
+
+	return nil
+}
+
+func (f *ESP32Flasher) setDTRAndRTS(dtr, rts bool) error {
+	if f.modemControl != nil {
+		return f.modemControl.Set(dtr, rts)
+	}
+	if err := f.port.SetDTR(dtr); err != nil {
+		return err
+	}
+	return f.port.SetRTS(rts)
 }
 
 // hardReset performs the standard Espressif DevKit reset sequence.

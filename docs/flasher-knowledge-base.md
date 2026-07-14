@@ -108,6 +108,10 @@ For an adapter wired directly as DTR → GPIO0 and RTS → EN:
 
 Serial libraries expose logical DTR/RTS states, while USB-to-UART hardware is commonly active-low. Always test control-line changes with a fake port before changing reset timing or polarity.
 
+Some ESP32-WROOM DevKit boards use a Silicon Labs CP2102 bridge and require esptool's Unix-tight reset transitions. On Unix, DTR and RTS must be changed atomically through one `TIOCMSET` ioctl; two sequential serial-library calls can produce the same final states but still fail to enter a usable download session. The flasher opens a control descriptor before the serial library acquires exclusive access, tries normal and extended tight-reset delays, and closes that descriptor before the serial port to avoid a final HUPCL reset pulse.
+
+Entering download mode is not sufficient proof of a working connection. Hardware testing on an ESP32-D0WDQ6 revision 1.0 produced `boot:0x3 ... waiting for download`, but the CP2102 dropped the first two SYNC exchanges. The connection path therefore retries SYNC five times, matching esptool's retry policy, before falling back to another reset strategy.
+
 If automatic entry fails, the user can hold BOOT, press and release EN/RESET, release BOOT, and retry.
 
 ### Reset after a successful flash

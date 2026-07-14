@@ -73,6 +73,78 @@ func TestRebootTargetStopsWhenResetCannotBeAsserted(t *testing.T) {
 	}
 }
 
+func TestTightResetUsesCP2102CompatibleStateTransitions(t *testing.T) {
+	t.Context()
+	tests := []struct {
+		name      string
+		bootDelay time.Duration
+	}{
+		{name: "normal delay", bootDelay: 50 * time.Millisecond},
+		{name: "slow CP2102 delay", bootDelay: 550 * time.Millisecond},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Context()
+			port := &fakeSerialPort{}
+			flasher := &ESP32Flasher{port: port, modemControl: &fakeModemControl{port: port}}
+
+			err := flasher.tightResetWithSleepAndDelay(func(delay time.Duration) {
+				port.actions = append(port.actions, "WAIT="+delay.String())
+			}, tt.bootDelay)
+			if err != nil {
+				t.Fatalf("tightResetWithSleepAndDelay() error = %v", err)
+			}
+
+			want := []string{
+				"DTR=false,RTS=false",
+				"DTR=true,RTS=true",
+				"DTR=false,RTS=true",
+				"WAIT=100ms",
+				"DTR=true,RTS=false",
+				"WAIT=" + tt.bootDelay.String(),
+				"DTR=false,RTS=false",
+				"DTR=false",
+			}
+			if !slices.Equal(port.actions, want) {
+				t.Fatalf("control line sequence = %v, want %v", port.actions, want)
+			}
+		})
+	}
+}
+
+func TestTightResetStopsOnAtomicControlError(t *testing.T) {
+	t.Context()
+	port := &fakeSerialPort{failAction: "DTR=false,RTS=true"}
+	flasher := &ESP32Flasher{port: port, modemControl: &fakeModemControl{port: port}}
+
+	err := flasher.tightResetWithSleepAndDelay(func(time.Duration) {}, 50*time.Millisecond)
+	if !errors.Is(err, errControlLine) {
+		t.Fatalf("tightResetWithSleepAndDelay() error = %v, want %v", err, errControlLine)
+	}
+	want := []string{
+		"DTR=false,RTS=false",
+		"DTR=true,RTS=true",
+		"DTR=false,RTS=true",
+	}
+	if !slices.Equal(port.actions, want) {
+		t.Fatalf("actions after failure = %v, want %v", port.actions, want)
+	}
+}
+
+func TestCloseReleasesAtomicControlBeforeSerialPort(t *testing.T) {
+	t.Context()
+	port := &fakeSerialPort{}
+	flasher := &ESP32Flasher{port: port, modemControl: &fakeModemControl{port: port}}
+
+	if err := flasher.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+	want := []string{"CONTROL_CLOSE", "PORT_CLOSE"}
+	if !slices.Equal(port.actions, want) {
+		t.Fatalf("close order = %v, want %v", port.actions, want)
+	}
+}
+
 func TestClassicResetUsesEspressifControlLineSequence(t *testing.T) {
 	t.Context()
 	port := &fakeSerialPort{}
