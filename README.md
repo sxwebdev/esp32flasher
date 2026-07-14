@@ -1,67 +1,74 @@
 # ESP32 Flasher
 
-Полностью автономный (single-binary) ESP32 flasher на Go с UI на Wails. Реализует собственный протокол ESP32 ROM bootloader без зависимости от esptool.py.
+A self-contained ESP32 flasher written in Go with a Wails desktop UI. It implements the ESP32 ROM bootloader protocol directly and does not require `esptool.py` at runtime.
 
-## ✨ Особенности
+## Features
 
-- **Эталонная реализация**: Использует официальные алгоритмы сброса из [esp-serial-flasher](https://github.com/espressif/esp-serial-flasher)
-- **Автономность**: Единый исполнимый файл без внешних зависимостей
-- **Нативный протокол**: Собственная реализация ESP32 ROM bootloader протокола (SLIP, SYNC, FLASH_BEGIN, FLASH_DATA, FLASH_END, SPI_ATTACH)
-- **Автоматический сброс**: Корректный перевод ESP32 в режим загрузчика через DTR/RTS
-- **Мониторинг порта**: Встроенный Serial Monitor для диагностики ESP32 (9600-921600 baud)
-- **Прогресс и логи**: Подробные логи процесса прошивки с индикацией прогресса
-- **Обработка ошибок**: Корректная реакция на ошибки и обрывы связи
+- Single native desktop application with no external flashing tools
+- ESP32 ROM protocol support: SLIP, SYNC, READ_REG, SPI_ATTACH, SPI_SET_PARAMS, FLASH_BEGIN, FLASH_DATA, FLASH_END, and SPI_FLASH_MD5
+- Automatic entry into download mode through standard DevKit and direct DTR/RTS wiring
+- Automatic 115200 → 921600 baud negotiation with 460800 and 115200 fallbacks
+- Automatic classification of merged and application-only images
+- ROM-side MD5 verification before reboot
+- Built-in serial monitor from 9600 to 921600 baud
+- Progress reporting, bounded block retries, and detailed error messages
 
-## 🚀 Быстрый старт
+## Quick start
 
-### Прошивка
+### Flash firmware
 
-1. Запустите приложение
-2. Выберите файл application.bin
-3. Выберите COM-порт ESP32
-4. Нажмите "Flash"
-5. ESP32 автоматически переводится в bootloader и прошивается
+1. Start the application.
+2. Select the ESP32 serial port.
+3. Select a `.bin` firmware image.
+4. Click **Flash firmware**.
+5. The application enters the ROM bootloader, writes and verifies the image, then reboots the board.
 
-### Мониторинг
+A full merged image is written at `0x0`. An application-only image is written at `0x10000`.
 
-1. Выберите COM-порт ESP32
-2. Выберите скорость (9600, 115200, 460800, 921600 baud)
-3. Нажмите "🔍 Мониторинг"
-4. Смотрите вывод ESP32 в реальном времени
-5. Нажмите "⏹️ Стоп" для остановки
+### Monitor serial output
 
-## 🔧 Техническая информация
+1. Select the ESP32 serial port and baud rate.
+2. Click **Monitor**.
+3. Click **Stop** before starting a flash operation.
 
-### Последовательность сброса
+## Wiring
 
-Использует эталонную последовательность из официального esp-serial-flasher:
-
-1. GPIO0 (BOOT) = LOW
-2. RESET = LOW на 100мс
-3. RESET = HIGH
-4. Держать GPIO0 = LOW ещё 50мс
-5. GPIO0 = HIGH
-
-### Подключение
+The flasher first tries the standard Espressif DevKit auto-reset circuit. It then falls back to direct wiring:
 
 ```text
-ESP32 GPIO0 <--[1kΩ]-- DTR (USB-UART)
-ESP32 EN    <--[1kΩ]-- RTS (USB-UART)
+ESP32 GPIO0 <--[1 kΩ]-- DTR (USB-to-UART)
+ESP32 EN    <--[1 kΩ]-- RTS (USB-to-UART)
 ```
 
-### Протокол
+For direct wiring, GPIO0 is held low while EN is reset, EN is released, and GPIO0 is released 50 ms later.
 
-- Адрес прошивки: 0x10000 (стандартный для application partition)
-- Размер блока: 4KB
-- Поддержка MD5 verification
-- Автоматическое стирание секторов
-
-## 🛠️ Сборка
+## Development
 
 ```bash
+go test ./...
+go vet ./...
+cd frontend && npm run build
 wails build
 ```
 
-## 📝 Лицензия
+The hardware integration test is opt-in:
+
+```bash
+ESP32_FLASH_PORT=/dev/cu.usbserial-0001 \
+ESP32_FLASH_IMAGE=testdata/esp32_rx_hardworker_latest.merged.bin \
+go test ./internal/esp32 -run TestFlashESP32Hardware -v
+```
+
+See [Flasher knowledge base](docs/flasher-knowledge-base.md) for architecture, protocol details, failure modes, and development guidance.
+
+## Releases
+
+Push a tag to build macOS and Windows binaries for AMD64 and ARM64 and attach them to a GitHub release:
+
+```bash
+make release TAG=v1.2.3
+```
+
+## License
 
 MIT License

@@ -17,13 +17,15 @@ func main() {
 
 	// Create application with options
 	err := wails.Run(&options.App{
-		Title:  "ESP32 Flasher",
-		Width:  650,
-		Height: 800,
+		Title:     "ESP32 Flasher",
+		Width:     920,
+		Height:    620,
+		MinWidth:  420,
+		MinHeight: 520,
 		AssetServer: &assetserver.Options{
 			Assets: assets,
 		},
-		BackgroundColour: &options.RGBA{R: 102, G: 126, B: 234, A: 1},
+		BackgroundColour: &options.RGBA{R: 11, G: 14, B: 16, A: 1},
 		OnStartup:        app.startup,
 		Bind: []any{
 			app,

@@ -21,38 +21,52 @@ const logArea = document.getElementById("log");
 const progressContainer = document.getElementById("progressContainer");
 const progressBar = document.getElementById("progressBar");
 const progressText = document.getElementById("progressText");
+const systemStatus = document.getElementById("systemStatus");
+const logCounter = document.getElementById("logCounter");
 
 let isMonitoring = false;
-let logUpdateTimeout = null; // Для батчинга обновлений лога
-let autoScrollEnabled = true; // Автоскролл включен по умолчанию
-let logLines = []; // Массив строк лога для эффективного управления
-const MAX_LOG_LINES = 1000; // Увеличиваем лимит строк
+let logUpdateTimeout = null; // Batches log rendering updates.
+let autoScrollEnabled = true; // Auto-scroll is enabled by default.
+let logLines = []; // In-memory terminal line buffer.
+const MAX_LOG_LINES = 1000;
 
-// Залить лог
+// Append a timestamped message to the log.
 function log(msg) {
   const timestamp = new Date().toLocaleTimeString();
   addLogLine(`[${timestamp}] ${msg}`);
 }
 
-// Эффективное добавление строки в лог
+// Append one line to the terminal efficiently.
 function addLogLine(line) {
   logLines.push(line);
 
-  // Ограничиваем количество строк (автоочистка как в терминале)
+  // Keep a bounded terminal-style scrollback buffer.
   if (logLines.length > MAX_LOG_LINES) {
     logLines = logLines.slice(-MAX_LOG_LINES);
   }
 
-  // Сразу обновляем отображение
+  // Render immediately.
   logArea.textContent = logLines.join("\n");
+  updateLogCounter();
 
-  // Автоскролл если включен
+  // Follow the newest output when auto-scroll is enabled.
   if (autoScrollEnabled) {
     logArea.scrollTop = logArea.scrollHeight;
   }
 }
 
-// Обновить прогресс
+function updateLogCounter() {
+  const count = logLines.length;
+  const suffix = count === 1 ? "line" : "lines";
+  logCounter.textContent = `${count} ${suffix}`;
+}
+
+function setSystemStatus(text, busy = false) {
+  systemStatus.classList.toggle("busy", busy);
+  systemStatus.querySelector("span:last-child").textContent = text;
+}
+
+// Update flash progress.
 function updateProgress(progress, message) {
   progressBar.style.width = `${progress}%`;
   progressText.textContent = `${progress}%`;
@@ -61,16 +75,16 @@ function updateProgress(progress, message) {
   }
 }
 
-// Показать/скрыть прогресс
+// Show or hide flash progress.
 function showProgress(show) {
-  progressContainer.style.display = show ? "block" : "none";
+  progressContainer.hidden = !show;
   if (!show) {
     progressBar.style.width = "0%";
     progressText.textContent = "0%";
   }
 }
 
-// Настройка событий для прогресса
+// Subscribe to flash progress events.
 EventsOn("flash-progress", (data) => {
   updateProgress(data.progress, data.message);
 });
@@ -79,23 +93,24 @@ EventsOn("flash-log", (message) => {
   log(message);
 });
 
-// События мониторинга порта
+// Subscribe to serial monitor events.
 EventsOn("monitor-data", (data) => {
-  // Данные уже приходят построчно, сразу отображаем
+  // Data already arrives as complete lines.
   if (data.trim()) {
     const timestamp = new Date().toLocaleTimeString();
     const logLine = `[${timestamp}] ${data.trim()}`;
 
-    // Добавляем строку и сразу ограничиваем количество
+    // Append the line and enforce the scrollback limit.
     logLines.push(logLine);
     if (logLines.length > MAX_LOG_LINES) {
       logLines = logLines.slice(-MAX_LOG_LINES);
     }
 
-    // Сразу обновляем отображение без батчинга
+    // Render without batching for responsive serial output.
     logArea.textContent = logLines.join("\n");
+    updateLogCounter();
 
-    // Автоскролл если включен
+    // Follow new output when enabled.
     if (autoScrollEnabled) {
       logArea.scrollTop = logArea.scrollHeight;
     }
@@ -103,7 +118,7 @@ EventsOn("monitor-data", (data) => {
 });
 
 EventsOn("monitor-error", (error) => {
-  log(`❌ Ошибка мониторинга: ${error}`);
+  log(`❌ Monitor error: ${error}`);
   stopMonitoring();
 });
 
@@ -111,7 +126,7 @@ EventsOn("monitor-stop", () => {
   stopMonitoring();
 });
 
-// Получить и показать порты
+// Discover and display serial ports.
 async function refreshPorts() {
   portSelect.innerHTML = "";
   try {
@@ -122,67 +137,70 @@ async function refreshPorts() {
       o.textContent = p;
       portSelect.appendChild(o);
     });
-    log(`Найдено портов: ${ports.length}`);
+    log(`Found ${ports.length} ports`);
   } catch (e) {
-    log("Ошибка ListPorts: " + e);
+    log("ListPorts error: " + e);
   }
 }
 
-// Выбор файла
+// Select a firmware image.
 btnChoose.addEventListener("click", async () => {
   try {
     const res = await ChooseFile();
     if (res) {
       filePath.value = res;
-      log("Выбран " + res);
+      log("Selected " + res);
     }
   } catch (e) {
-    log("Ошибка выбора файла: " + e);
+    log("File selection error: " + e);
   }
 });
 
-// Кнопка «Прошить»
+// Flash button.
 btnFlash.addEventListener("click", async () => {
   const port = portSelect.value;
   const file = filePath.value;
   if (!port || !file) {
-    alert("Укажите порт и файл!");
+    alert("Select a port and firmware file.");
     return;
   }
 
   if (isMonitoring) {
-    alert("Остановите мониторинг перед прошивкой!");
+    alert("Stop serial monitoring before flashing.");
     return;
   }
 
-  // Блокируем интерфейс
+  // Lock conflicting controls during flashing.
   btnFlash.disabled = true;
   btnChoose.disabled = true;
   btnRefresh.disabled = true;
   btnMonitor.disabled = true;
   portSelect.disabled = true;
   baudSelect.disabled = true;
+  setSystemStatus("Flashing", true);
 
-  // Очищаем лог и показываем прогресс
+  // Clear the log and reveal progress.
+  logLines = [];
   logArea.textContent = "";
+  updateLogCounter();
   showProgress(true);
 
-  log(`🚀 Начинаем прошивку ${file} → ${port}`);
+  log(`🚀 Starting flash ${file} → ${port}`);
 
   try {
     await Flash(port, file);
-    log("✅ Прошивка успешно завершена!");
+    log("✅ Firmware flashed successfully!");
     setTimeout(() => {
-      alert("Прошивка завершена успешно!");
+      alert("Firmware flashed successfully!");
     }, 100);
   } catch (e) {
-    log("❌ Ошибка прошивки: " + e);
-    updateProgress(0, "Ошибка");
+    log("❌ Flash error: " + e);
+    updateProgress(0, "Error");
     setTimeout(() => {
-      alert("Ошибка прошивки: " + e);
+      alert("Flash error: " + e);
     }, 100);
   } finally {
-    // Разблокируем интерфейс и скрываем прогресс
+    // Restore the controls and hide progress.
     setTimeout(() => {
       showProgress(false);
       btnFlash.disabled = false;
@@ -191,103 +209,122 @@ btnFlash.addEventListener("click", async () => {
       btnMonitor.disabled = false;
       portSelect.disabled = false;
       baudSelect.disabled = false;
-    }, 1000); // Задержка, чтобы пользователь увидел финальное состояние
+      setSystemStatus("System ready");
+    }, 1000); // Leave the final state visible briefly.
   }
 });
 
-// Кнопка мониторинга порта
+// Serial monitor button.
 btnMonitor.addEventListener("click", async () => {
   const port = portSelect.value;
   const baud = parseInt(baudSelect.value);
   if (!port) {
-    alert("Выберите COM-порт для мониторинга!");
+    alert("Select a serial port to monitor.");
     return;
   }
 
   try {
-    // Очищаем лог перед началом мониторинга
+    // Clear old output before monitoring starts.
+    logLines = [];
     logArea.textContent = "";
+    updateLogCounter();
 
     await MonitorPort(port, baud);
     startMonitoring();
-    log(`🔍 Мониторинг порта ${port} запущен (${baud} baud)`);
+    log(`🔍 Monitoring ${port} at ${baud} baud`);
   } catch (e) {
-    log("❌ Ошибка запуска мониторинга: " + e);
-    alert("Ошибка запуска мониторинга: " + e);
+    log("❌ Could not start monitoring: " + e);
+    alert("Could not start monitoring: " + e);
   }
 });
 
-// Кнопка остановки мониторинга
+// Stop-monitor button.
 btnStopMonitor.addEventListener("click", async () => {
   try {
     await StopMonitor();
     stopMonitoring();
   } catch (e) {
-    log("❌ Ошибка остановки мониторинга: " + e);
+    log("❌ Could not stop monitoring: " + e);
   }
 });
 
-// Функции мониторинга
+// Serial monitor UI state.
 function startMonitoring() {
   isMonitoring = true;
-  btnMonitor.style.display = "none";
-  btnStopMonitor.style.display = "inline-block";
+  btnMonitor.hidden = true;
+  btnStopMonitor.hidden = false;
   btnFlash.disabled = true;
   portSelect.disabled = true;
   baudSelect.disabled = true;
+  setSystemStatus("Monitoring", true);
 }
 
 function stopMonitoring() {
   isMonitoring = false;
-  btnMonitor.style.display = "inline-block";
-  btnStopMonitor.style.display = "none";
+  btnMonitor.hidden = false;
+  btnStopMonitor.hidden = true;
   btnFlash.disabled = false;
   portSelect.disabled = false;
   baudSelect.disabled = false;
+  setSystemStatus("System ready");
 
-  // Очищаем таймер обновления лога если он есть
+  // Cancel any pending log render.
   if (logUpdateTimeout) {
     clearTimeout(logUpdateTimeout);
     logUpdateTimeout = null;
   }
 }
 
-// Кнопка очистки лога
+// Clear-log button.
 btnClearLog.addEventListener("click", () => {
-  logLines = []; // Очищаем массив строк
+  logLines = [];
   logArea.textContent = "";
-  log("🗑️ Лог очищен");
+  updateLogCounter();
+  log("🗑️ Log cleared");
 });
 
-// Кнопка автоскролла
+// Auto-scroll button.
 btnAutoScroll.addEventListener("click", () => {
   autoScrollEnabled = !autoScrollEnabled;
 
   if (autoScrollEnabled) {
     btnAutoScroll.classList.add("active");
-    btnAutoScroll.textContent = "📜 Автоскролл";
-    // Если включили автоскролл, сразу прокручиваем вниз
+    btnAutoScroll.setAttribute("aria-pressed", "true");
+    // Jump to the newest line when re-enabled.
     requestAnimationFrame(() => {
       logArea.scrollTop = logArea.scrollHeight;
     });
-    log("📜 Автоскролл включен");
+    log("📜 Auto-scroll enabled");
   } else {
     btnAutoScroll.classList.remove("active");
-    btnAutoScroll.textContent = "📜 Автоскролл";
-    log("⏸️ Автоскролл отключен");
+    btnAutoScroll.setAttribute("aria-pressed", "false");
+    log("⏸️ Auto-scroll disabled");
   }
 });
 
-// При старте
+// Initial startup.
 btnRefresh.addEventListener("click", refreshPorts);
 
-// Инициализируем состояние кнопки автоскролла
+// Keyboard shortcut shown on the primary action.
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Enter" && !event.repeat && !btnFlash.disabled) {
+    const interactiveTarget = event.target instanceof Element
+      ? event.target.closest("button, select")
+      : null;
+    if (!interactiveTarget) {
+      btnFlash.click();
+    }
+  }
+});
+
+// Initialize the auto-scroll button state.
 if (autoScrollEnabled) {
   btnAutoScroll.classList.add("active");
-  btnAutoScroll.textContent = "📜 Автоскролл";
+  btnAutoScroll.setAttribute("aria-pressed", "true");
 } else {
   btnAutoScroll.classList.remove("active");
-  btnAutoScroll.textContent = "📜 Автоскролл";
+  btnAutoScroll.setAttribute("aria-pressed", "false");
 }
 
+updateLogCounter();
 refreshPorts();
