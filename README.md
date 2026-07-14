@@ -51,9 +51,13 @@ For direct wiring, GPIO0 is held low while EN is reset, EN is released, and GPIO
 ```bash
 go test ./...
 go vet ./...
-cd frontend && npm run build
 wails build
+wails dev
 ```
+
+Wails generates `frontend/wailsjs/` during `wails build` and `wails dev`.
+Run the frontend through Wails so the generated Go bindings always match the
+backend API and the installed Wails version.
 
 The hardware integration test is opt-in:
 
