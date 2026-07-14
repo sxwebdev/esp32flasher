@@ -118,10 +118,12 @@ Do not ask `FLASH_END` to reboot and then immediately perform a hardware reset. 
 2. wait 50 ms for a stable neutral state;
 3. hold EN low for 100 ms;
 4. release EN while GPIO0 remains high;
-5. wait 500 ms before closing the serial port;
+5. keep the port open for four seconds while the ROM and application initialize;
 6. leave both DTR and RTS released.
 
 This matches the normal-boot intent of Arduino IDE/esptool: verification completes before reset, and the final reset is an RTS/EN pulse with the boot pin released.
+
+The four-second stabilization period is intentional. On tested macOS USB-to-UART hardware, closing a high-speed flashing session after only 500 ms could make the next monitor session receive the final application log fragment continuously (for example, `на!` at about 80 KiB/s). A raw hardware regression test proved that keeping the port open through application startup prevents the adapter/driver replay state. Do not shorten this delay without rerunning the complete flash-close-reopen lifecycle test.
 
 ## ROM packet format and SLIP
 
@@ -268,6 +270,15 @@ ESP32_MONITOR_CAPTURE_PORT=/dev/cu.usbserial-0001 \
 go test . -run TestMonitorESP32RawCapture -v -count=1
 ```
 
+To reproduce the production application-only lifecycle—destructive flash at `0x10000`, reset, close, wait, and reopen the monitor—run:
+
+```bash
+ESP32_LIFECYCLE_PORT=/dev/cu.usbserial-0001 \
+go test . -run TestProductionFlashMonitorLifecycleHardware -v -count=1
+```
+
+The lifecycle test fails if one raw serial line is received more than ten times after reopening. It uses `testdata/esp32_rx_hardworker_latest.bin`, not the merged image.
+
 Relative image paths are resolved from either the package directory or the repository root. When the image path is omitted, the test uses `testdata/esp32_rx_hardworker_latest.merged.bin`.
 
 ## Release builds
@@ -314,3 +325,7 @@ Do not compare the complete chip after application startup without accounting fo
 ### Flashing is slower than Arduino IDE
 
 Confirm that 921600 baud negotiation succeeds. Throughput also depends on 1024-byte ROM blocks, per-block acknowledgements, USB-to-UART latency, and conservative retry behavior. Increase block size only after cross-chip hardware validation.
+
+### The monitor repeats the tail of the final startup line
+
+If the monitor receives a short fragment such as `на!` thousands of times immediately after flashing, first reproduce it with `TestProductionFlashMonitorLifecycleHardware`. This pattern was caused by closing the high-speed flashing port during early application UART output, not by merged-image detection or frontend rendering. Preserve the post-reset stabilization period and verify that both DTR and RTS remain released when the port closes and reopens.

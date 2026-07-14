@@ -12,6 +12,9 @@ import (
 	"testing"
 	"time"
 
+	"espflasher/internal/esp32"
+	"espflasher/internal/firmware"
+
 	serialport "go.bug.st/serial"
 )
 
@@ -131,6 +134,82 @@ func TestMonitorESP32RawCapture(t *testing.T) {
 	}
 	sample := output[:min(len(output), 512)]
 	t.Logf("captured %d bytes; first sample=%q", len(output), sample)
+}
+
+// TestProductionFlashMonitorLifecycleHardware reproduces the desktop lifecycle:
+// flash, reset, close the flasher port, wait for startup, then reopen monitoring.
+func TestProductionFlashMonitorLifecycleHardware(t *testing.T) {
+	t.Context()
+	portName := os.Getenv("ESP32_LIFECYCLE_PORT")
+	if portName == "" {
+		t.Skip("set ESP32_LIFECYCLE_PORT to run the destructive lifecycle test")
+	}
+
+	imagePath := "testdata/esp32_rx_hardworker_latest.bin"
+	data, err := os.ReadFile(imagePath)
+	if err != nil {
+		t.Fatalf("read firmware: %v", err)
+	}
+	image := firmware.Detect(imagePath, data)
+	flasher, err := esp32.New(portName, nil)
+	if err != nil {
+		t.Fatalf("connect to ROM bootloader: %v", err)
+	}
+	t.Cleanup(func() { _ = flasher.Close() })
+	if err := flasher.Flash(data, image.Offset); err != nil {
+		t.Fatalf("flash firmware: %v", err)
+	}
+	if err := flasher.RebootTarget(); err != nil {
+		t.Fatalf("reboot target: %v", err)
+	}
+	if err := flasher.Close(); err != nil {
+		t.Fatalf("close flasher immediately after reboot: %v", err)
+	}
+
+	time.Sleep(8 * time.Second)
+	port, err := serialport.Open(portName, monitorPortMode(115200))
+	if err != nil {
+		t.Fatalf("reopen monitor port: %v", err)
+	}
+	t.Cleanup(func() { _ = port.Close() })
+	if err := releaseMonitorControlLines(port); err != nil {
+		t.Fatalf("release monitor control lines: %v", err)
+	}
+	if err := port.SetReadTimeout(50 * time.Millisecond); err != nil {
+		t.Fatalf("set monitor timeout: %v", err)
+	}
+
+	deadline := time.Now().Add(time.Second)
+	readBuffer := make([]byte, 4096)
+	var output []byte
+	for time.Now().Before(deadline) {
+		n, err := port.Read(readBuffer)
+		if n > 0 {
+			output = append(output, readBuffer[:n]...)
+		}
+		if err != nil {
+			t.Fatalf("read reopened monitor: %v", err)
+		}
+	}
+
+	lineCounts := make(map[string]int)
+	mostRepeatedLine := ""
+	mostRepeatedCount := 0
+	for _, rawLine := range bytes.Split(output, []byte("\n")) {
+		line := string(bytes.TrimSpace(rawLine))
+		if line == "" {
+			continue
+		}
+		lineCounts[line]++
+		if lineCounts[line] > mostRepeatedCount {
+			mostRepeatedLine = line
+			mostRepeatedCount = lineCounts[line]
+		}
+	}
+	t.Logf("reopened monitor captured %d bytes; most repeated line=%q count=%d", len(output), mostRepeatedLine, mostRepeatedCount)
+	if mostRepeatedCount > 10 {
+		t.Fatalf("serial output loop after production port reopen: line %q repeated %d times", mostRepeatedLine, mostRepeatedCount)
+	}
 }
 
 func TestReleaseMonitorControlLinesLeavesESP32Running(t *testing.T) {

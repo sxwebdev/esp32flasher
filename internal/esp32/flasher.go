@@ -724,8 +724,11 @@ func (f *ESP32Flasher) normalBootReset(sleep func(time.Duration)) error {
 		return fmt.Errorf("release reset: %w", err)
 	}
 
-	// Let the ROM sample GPIO0 and begin booting before the serial port closes.
-	sleep(500 * time.Millisecond)
+	// Keep the port open while the ROM and application initialize. Closing a
+	// high-speed flashing session during early UART output can leave some USB
+	// serial adapters continuously replaying the final received fragment when
+	// the monitor reopens the port.
+	sleep(SERIAL_APPLICATION_STARTUP_WAIT)
 	if err := f.port.SetDTR(false); err != nil {
 		return fmt.Errorf("keep boot pin released: %w", err)
 	}

@@ -46,7 +46,7 @@ func TestRebootTargetUsesOneStableHardReset(t *testing.T) {
 		"RTS=true",
 		"WAIT=100ms",
 		"RTS=false",
-		"WAIT=500ms",
+		"WAIT=4s",
 		"DTR=false",
 		"RTS=false",
 	}

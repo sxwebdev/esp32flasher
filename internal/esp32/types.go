@@ -1,6 +1,8 @@
 package esp32
 
 import (
+	"time"
+
 	"go.bug.st/serial"
 )
 
@@ -42,6 +44,7 @@ const (
 	// Reset timing.
 	SERIAL_FLASHER_RESET_HOLD_TIME_MS = 100
 	SERIAL_FLASHER_BOOT_HOLD_TIME_MS  = 50
+	SERIAL_APPLICATION_STARTUP_WAIT   = 4 * time.Second
 )
 
 // ChipType identifies an ESP32 family member.
