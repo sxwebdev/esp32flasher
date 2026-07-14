@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="screenshots/promo.webp" alt="espflasher — a self-contained ESP32 flasher written in Go with a Wails desktop UI" width="100%">
+</p>
+
 # ESP32 Flasher
 
 A self-contained ESP32 flasher written in Go with a Wails desktop UI. It implements the ESP32 ROM bootloader protocol directly and does not require `esptool.py` at runtime.
@@ -57,6 +61,14 @@ The hardware integration test is opt-in:
 ESP32_FLASH_PORT=/dev/cu.usbserial-0001 \
 ESP32_FLASH_IMAGE=testdata/esp32_rx_hardworker_latest.merged.bin \
 go test ./internal/esp32 -run TestFlashESP32Hardware -v
+```
+
+The same hardware test accepts an application-only image and writes it at `0x10000`:
+
+```bash
+ESP32_FLASH_PORT=/dev/cu.usbserial-0001 \
+ESP32_FLASH_IMAGE=testdata/esp32_rx_hardworker_latest.bin \
+go test ./internal/esp32 -run TestFlashESP32Hardware -v -count=1
 ```
 
 See [Flasher knowledge base](docs/flasher-knowledge-base.md) for architecture, protocol details, failure modes, and development guidance.
