@@ -1,8 +1,7 @@
 dev:
 	wails dev
 
-build-windows:
-	wails build -platform windows/amd64
-
-build-macos:
-	wails build -platform darwin/amd64
+release:
+	@if [ -z "$(TAG)" ]; then echo "Usage: make release TAG=v1.2.3"; exit 1; fi
+	git tag -a $(TAG) -m "Release $(TAG)"
+	git push origin $(TAG)

@@ -1,86 +1,85 @@
+<p align="center">
+  <img src="screenshots/promo.png" alt="espflasher — a self-contained ESP32 flasher written in Go with a Wails desktop UI" width="100%">
+</p>
+
 # ESP32 Flasher
 
-A standalone single-binary ESP32 flasher written in Go with Wails GUI. Implements native ESP32 ROM bootloader protocol without dependency on esptool.py.
+A self-contained ESP32 flasher written in Go with a Wails desktop UI. It implements the ESP32 ROM bootloader protocol directly and does not require `esptool.py` at runtime.
 
 ## Features
 
-- **Single Binary**: No external dependencies, no Python required
-- **Native Protocol**: Custom ESP32 ROM bootloader implementation (SLIP framing, command protocol)
-- **Fast Flashing**: Zlib compression + 460800 baud rate for ~30s flash time on 1.8MB firmware
-- **Auto Reset**: Automatic DTR/RTS reset sequence to enter bootloader mode
-- **Serial Monitor**: Built-in serial monitor for ESP32 debugging (9600-921600 baud)
-- **Progress Tracking**: Real-time progress bar and detailed logs with millisecond timestamps
-- **Multiple Offsets**: Support for different flash addresses (0x0, 0x1000, 0x8000, 0x10000, custom)
+- Single native desktop application with no external flashing tools
+- ESP32 ROM protocol support: SLIP, SYNC, READ_REG, SPI_ATTACH, SPI_SET_PARAMS, FLASH_BEGIN, FLASH_DATA, FLASH_END, and SPI_FLASH_MD5
+- Automatic entry into download mode through standard DevKit and direct DTR/RTS wiring
+- Automatic 115200 → 921600 baud negotiation with 460800 and 115200 fallbacks
+- Automatic classification of merged and application-only images
+- ROM-side MD5 verification before reboot
+- Built-in serial monitor from 9600 to 921600 baud
+- Progress reporting, bounded block retries, and detailed error messages
 
-## Quick Start
+## Quick start
 
-### Flashing
+### Flash firmware
 
-1. Launch the application
-2. Select COM port and refresh if needed
-3. Choose firmware file (.bin)
-4. Select flash address (0x10000 for app, 0x0 for merged binary)
-5. Click "Flash ESP32"
-6. ESP32 will automatically enter bootloader and flash
+1. Start the application.
+2. Select the ESP32 serial port.
+3. Select a `.bin` firmware image.
+4. Click **Flash firmware**.
+5. The application enters the ROM bootloader, writes and verifies the image, then reboots the board.
 
-### Serial Monitor
+A full merged image is written at `0x0`. An application-only image is written at `0x10000`.
 
-1. Select COM port
-2. Choose baud rate (default: 115200)
-3. Click "Monitor"
-4. View real-time ESP32 output
-5. Click "Stop" to disconnect
+### Monitor serial output
 
-## Technical Details
+1. Select the ESP32 serial port and baud rate.
+2. Click **Monitor**.
+3. Click **Stop** before starting a flash operation.
 
-### Reset Sequence
+## Wiring
 
-Uses classic DTR/RTS reset sequence:
+The flasher first tries the standard Espressif DevKit auto-reset circuit. It then falls back to direct wiring:
 
 ```text
-DTR=false (IO0=HIGH)
-RTS=true  (EN=LOW, reset)
-wait 100ms
-DTR=true  (IO0=LOW, bootloader mode)
-RTS=false (EN=HIGH, run)
-wait 50ms
-DTR=false (IO0=HIGH)
+ESP32 GPIO0 <--[1 kΩ]-- DTR (USB-to-UART)
+ESP32 EN    <--[1 kΩ]-- RTS (USB-to-UART)
 ```
 
-### Flash Protocol
+For direct wiring, GPIO0 is held low while EN is reset, EN is released, and GPIO0 is released 50 ms later.
 
-- Initial baud: 115200, switches to 460800 for transfer
-- Block size: 16KB for optimal speed
-- Compression: Zlib deflate (typically 50-70% compression)
-- Erase timeout: 30-60s depending on file size
-
-### Flash Addresses
-
-| Address | Description              |
-| ------- | ------------------------ |
-| 0x0     | Full/merged binary image |
-| 0x1000  | Bootloader               |
-| 0x8000  | Partition table          |
-| 0x10000 | Application (default)    |
-
-## Building
-
-Requires Go 1.21+ and Wails CLI:
+## Development
 
 ```bash
-# Install Wails CLI
-go install github.com/wailsapp/wails/v2/cmd/wails@latest
-
-# Build application
+go test ./...
+go vet ./...
+cd frontend && npm run build
 wails build
 ```
 
-Output: `build/bin/espflasher.app` (macOS) or `build/bin/espflasher.exe` (Windows)
+The hardware integration test is opt-in:
 
-## Dependencies
+```bash
+ESP32_FLASH_PORT=/dev/cu.usbserial-0001 \
+ESP32_FLASH_IMAGE=testdata/esp32_rx_hardworker_latest.merged.bin \
+go test ./internal/esp32 -run TestFlashESP32Hardware -v
+```
 
-- [Wails v2](https://wails.io/) - Go/HTML5 desktop framework
-- [go.bug.st/serial](https://github.com/bugst/go-serial) - Serial port library
+The same hardware test accepts an application-only image and writes it at `0x10000`:
+
+```bash
+ESP32_FLASH_PORT=/dev/cu.usbserial-0001 \
+ESP32_FLASH_IMAGE=testdata/esp32_rx_hardworker_latest.bin \
+go test ./internal/esp32 -run TestFlashESP32Hardware -v -count=1
+```
+
+See [Flasher knowledge base](docs/flasher-knowledge-base.md) for architecture, protocol details, failure modes, and development guidance.
+
+## Releases
+
+Push a tag to build macOS and Windows binaries for AMD64 and ARM64 and attach them to a GitHub release:
+
+```bash
+make release TAG=v1.2.3
+```
 
 ## License
 

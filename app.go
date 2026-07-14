@@ -2,10 +2,11 @@ package main
 
 import (
 	"context"
+	"espflasher/internal/esp32"
+	"espflasher/internal/firmware"
 	"fmt"
 	"os"
-	"strings"
-	"time"
+	"sync"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 	serialport "go.bug.st/serial"
@@ -13,10 +14,15 @@ import (
 
 // App struct
 type App struct {
-	ctx         context.Context
-	monitorPort serialport.Port
-	stopMonitor chan bool
-	lineBuffer  string // Buffer for accumulating incomplete lines
+	ctx context.Context
+
+	monitorControlMu sync.Mutex
+	monitorMu        sync.Mutex
+	monitor          *monitorSession
+
+	progressMu   sync.Mutex
+	progressSet  bool
+	lastProgress int
 }
 
 // NewApp creates a new App application struct
@@ -24,7 +30,7 @@ func NewApp() *App {
 	return &App{}
 }
 
-// ListPorts returns list of available COM ports
+// ListPorts returns the available serial ports.
 func (a *App) ListPorts() ([]string, error) {
 	return serialport.GetPortsList()
 }
@@ -35,10 +41,10 @@ func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 }
 
-// ChooseFile opens file selection dialog
+// ChooseFile opens the firmware file picker.
 func (a *App) ChooseFile() (string, error) {
 	filePath, err := runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{
-		Title: "Select firmware file",
+		Title: "Select a firmware file",
 		Filters: []runtime.FileFilter{
 			{
 				DisplayName: "Firmware Files",
@@ -50,270 +56,159 @@ func (a *App) ChooseFile() (string, error) {
 	return filePath, err
 }
 
-// emitProgress sends progress to frontend
+// emitProgress sends flashing progress to the frontend.
 func (a *App) emitProgress(progress int, message string) {
-	runtime.EventsEmit(a.ctx, "flash-progress", map[string]interface{}{
+	a.progressMu.Lock()
+	if a.progressSet && progress == a.lastProgress {
+		a.progressMu.Unlock()
+		return
+	}
+	a.progressSet = true
+	a.lastProgress = progress
+	a.progressMu.Unlock()
+
+	runtime.EventsEmit(a.ctx, "flash-progress", map[string]any{
 		"progress": progress,
 		"message":  message,
 	})
 }
 
-// emitLog sends log message to frontend
+func (a *App) resetProgress() {
+	a.progressMu.Lock()
+	a.progressSet = false
+	a.progressMu.Unlock()
+}
+
+// emitLog sends a log message to the frontend.
 func (a *App) emitLog(message string) {
 	runtime.EventsEmit(a.ctx, "flash-log", message)
 }
 
-// FlashFile represents a file to flash with its address
-type FlashFile struct {
-	Path   string `json:"path"`
-	Offset int    `json:"offset"`
+func (a *App) flasherCallbacks() *esp32.Callbacks {
+	return &esp32.Callbacks{
+		Progress: a.emitProgress,
+		Log:      a.emitLog,
+	}
 }
 
-// FlashMultiple writes multiple firmware files to ESP32 at specified addresses
-func (a *App) FlashMultiple(portName string, files []FlashFile) error {
-	if len(files) == 0 {
-		return fmt.Errorf("no files to flash")
-	}
+// Flash writes a full merged image at 0x0 or an application image at 0x10000.
+func (a *App) Flash(portName, filePath string) error {
+	a.resetProgress()
 
-	// Check all files exist
-	for _, f := range files {
-		if _, err := os.Stat(f.Path); os.IsNotExist(err) {
-			return fmt.Errorf("file does not exist: %s", f.Path)
-		}
-	}
-
-	a.emitProgress(0, "Starting flash...")
-	a.emitLog(fmt.Sprintf("🔄 Flashing %d file(s)...", len(files)))
-
-	// Create ESP32 flasher
-	a.emitProgress(10, "Connecting to ESP32...")
-	a.emitLog("🔗 Connecting to ESP32...")
-
-	flasher, err := NewESP32FlasherWithProgress(portName, a)
-	if err != nil {
-		return fmt.Errorf("failed to create flasher: %w", err)
-	}
-	defer flasher.Close()
-
-	// Flash each file
-	totalFiles := len(files)
-	for i, f := range files {
-		// Read file
-		data, err := os.ReadFile(f.Path)
-		if err != nil {
-			return fmt.Errorf("failed to read file %s: %w", f.Path, err)
-		}
-
-		a.emitLog(fmt.Sprintf("📄 [%d/%d] %s: %d bytes @ 0x%X", i+1, totalFiles, f.Path, len(data), f.Offset))
-
-		// Flash data
-		if err := flasher.FlashData(data, uint32(f.Offset), portName); err != nil {
-			a.emitProgress(0, "Flash error")
-			return fmt.Errorf("failed to flash %s: %w", f.Path, err)
-		}
-	}
-
-	return nil
-}
-
-// Flash writes firmware to ESP32 at specified address using built-in esptool implementation
-func (a *App) Flash(portName, filePath string, offset int) error {
-	// Check if file exists
+	// Check that the image still exists before opening the serial port.
 	if _, err := os.Stat(filePath); os.IsNotExist(err) {
 		return fmt.Errorf("file does not exist: %s", filePath)
 	}
 
 	a.emitProgress(0, "Starting flash...")
-	a.emitLog(fmt.Sprintf("🔄 Initializing... Address: 0x%X", offset))
+	a.emitLog("🔄 Initializing...")
 
-	// Read file
+	// Load the complete image into memory.
 	data, err := os.ReadFile(filePath)
 	if err != nil {
 		return fmt.Errorf("failed to read file: %w", err)
 	}
 
-	a.emitProgress(10, "File loaded")
-	a.emitLog(fmt.Sprintf("📄 File loaded: %d bytes (%.2f KB)", len(data), float64(len(data))/1024))
+	a.emitProgress(10, "Firmware loaded")
+	a.emitLog(fmt.Sprintf("📄 Loaded firmware: %d bytes", len(data)))
+	image := firmware.Detect(filePath, data)
+	if image.Full {
+		a.emitLog("💾 Full merged image detected: Flash will be overwritten from address 0x0")
+	} else {
+		a.emitLog("📦 Application image detected: writing from address 0x10000")
+	}
 
-	// Create ESP32 flasher
 	a.emitProgress(20, "Connecting to ESP32...")
 	a.emitLog("🔗 Connecting to ESP32...")
 
-	flasher, err := NewESP32FlasherWithProgress(portName, a)
+	flasher, err := esp32.New(portName, a.flasherCallbacks())
 	if err != nil {
-		return fmt.Errorf("failed to create flasher: %w", err)
+		a.emitLog("❌ Could not enter the ROM bootloader automatically")
+		a.emitLog("💡 Hold BOOT, press and release EN/RESET, release BOOT, then start flashing again")
+		return fmt.Errorf("failed to connect to ESP32 ROM bootloader: %w", err)
 	}
 	defer flasher.Close()
 
-	// Flash data with progress (starts at 30%)
-	if err := flasher.FlashData(data, uint32(offset), portName); err != nil {
-		a.emitProgress(0, "Flash error")
+	// Write the image while reporting progress.
+	if err := flasher.Flash(data, image.Offset); err != nil {
+		a.emitProgress(0, "Flash failed")
 		return fmt.Errorf("failed to flash: %w", err)
 	}
 
+	// Reboot into normal execution only after ROM-side verification succeeds.
+	if err := flasher.RebootTarget(); err != nil {
+		return fmt.Errorf("failed to reboot ESP32 after flashing: %w", err)
+	}
+
+	a.emitProgress(100, "Flashing complete!")
+	a.emitLog("✅ Firmware flashed successfully!")
+	a.emitLog("💡 Flash has been restored; the ESP32 should now boot normally")
+
 	return nil
 }
 
-// MonitorPort creates connection to port for monitoring
-func (a *App) MonitorPort(portName string, baudRate int) error {
-	// If already monitoring, stop it first
-	if a.monitorPort != nil {
-		a.StopMonitor()
-	}
+// FlashWithRetry retries the complete flash operation.
+func (a *App) FlashWithRetry(portName, filePath string, maxAttempts int) error {
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		a.emitLog(fmt.Sprintf("🔄 Flash attempt %d/%d", attempt, maxAttempts))
 
-	// Open port for monitoring with retry logic
-	// After flashing, the port may need time to be released by the OS
-	mode := &serialport.Mode{
-		BaudRate: baudRate,
-		Parity:   serialport.NoParity,
-		DataBits: 8,
-		StopBits: serialport.OneStopBit,
-	}
-
-	var port serialport.Port
-	var err error
-	for range 5 {
-		port, err = serialport.Open(portName, mode)
+		err := a.Flash(portName, filePath)
 		if err == nil {
-			break
+			return nil
 		}
-		// Wait before retry - port may still be held by previous operation
-		time.Sleep(200 * time.Millisecond)
-	}
-	if err != nil {
-		return fmt.Errorf("failed to open port for monitoring: %w", err)
-	}
 
-	a.monitorPort = port
-	a.stopMonitor = make(chan bool, 1)
-	a.lineBuffer = "" // Clear line buffer
+		a.emitLog(fmt.Sprintf("❌ Attempt %d failed: %v", attempt, err))
 
-	// Clear any garbage in the input buffer
-	port.ResetInputBuffer()
-
-	a.emitLog(fmt.Sprintf("🔍 Starting monitor on %s (%d baud)", portName, baudRate))
-	a.emitLog("💡 Press 'Stop' to stop monitoring")
-
-	// Start goroutine to read data
-	go func() {
-		defer func() {
-			// Safe port close in goroutine
-			if a.monitorPort != nil {
-				a.monitorPort.Close()
-				a.monitorPort = nil
-			}
-		}()
-
-		buffer := make([]byte, 256) // Smaller buffer to reduce processing load
-
-		for {
-			select {
-			case <-a.stopMonitor:
-				return
-			default:
-				// Check if port is still open
-				if a.monitorPort == nil {
-					return
-				}
-
-				// Set read timeout
-				if err := a.monitorPort.SetReadTimeout(50 * time.Millisecond); err != nil {
-					return
-				}
-
-				n, err := a.monitorPort.Read(buffer)
-				if err != nil {
-					// If timeout - continue
-					if strings.Contains(err.Error(), "timeout") {
-						continue
-					}
-					// Check for "bad file descriptor" - just stop without error
-					if strings.Contains(err.Error(), "bad file descriptor") ||
-						strings.Contains(err.Error(), "file already closed") {
-						return
-					}
-					// For other errors - send to log and stop
-					runtime.EventsEmit(a.ctx, "monitor-error", err.Error())
-					return
-				}
-
-				if n > 0 {
-					// Filter out non-printable characters
-					// Keep: newline, carriage return, tab, printable ASCII (32-126), and UTF-8 (128-255)
-					filtered := make([]byte, 0, n)
-					for _, b := range buffer[:n] {
-						if b == '\n' || b == '\r' || b == '\t' || (b >= 32 && b < 127) || b >= 128 {
-							filtered = append(filtered, b)
-						}
-					}
-
-					if len(filtered) == 0 {
-						continue
-					}
-
-					// Add filtered data to buffer
-					a.lineBuffer += string(filtered)
-
-					// Process all complete lines
-					for {
-						newlineIdx := strings.Index(a.lineBuffer, "\n")
-						if newlineIdx == -1 {
-							// No complete lines, wait for more data
-							break
-						}
-
-						// Extract complete line
-						line := a.lineBuffer[:newlineIdx]
-						a.lineBuffer = a.lineBuffer[newlineIdx+1:]
-
-						// Remove extra \r and send line only if not empty
-						line = strings.TrimSpace(line)
-						if line != "" {
-							runtime.EventsEmit(a.ctx, "monitor-data", line)
-						}
-					}
-
-					// If buffer gets too large without \n, send as is and clear
-					if len(a.lineBuffer) > 500 {
-						line := strings.TrimSpace(a.lineBuffer)
-						if line != "" {
-							runtime.EventsEmit(a.ctx, "monitor-data", line)
-						}
-						a.lineBuffer = ""
-					}
-				}
-			}
+		if attempt < maxAttempts {
+			a.emitLog("⏳ Waiting before the next attempt...")
 		}
-	}()
+	}
 
-	return nil
+	return fmt.Errorf("flashing failed after %d attempts", maxAttempts)
 }
 
-// StopMonitor stops port monitoring
-func (a *App) StopMonitor() {
-	// Send stop signal first
-	if a.stopMonitor != nil {
-		select {
-		case a.stopMonitor <- true:
-		default:
-			// Channel already closed or full
+// FlashMultipleFiles writes a set of images at explicit offsets.
+func (a *App) FlashMultipleFiles(portName string, files map[string]uint32) error {
+	// For example: {"bootloader.bin": 0x1000, "app.bin": 0x10000, "partitions.bin": 0x8000}.
+
+	a.emitLog("🔄 Multiple-image flash mode...")
+
+	// Reuse a single ROM bootloader connection for every image.
+	flasher, err := esp32.New(portName, a.flasherCallbacks())
+	if err != nil {
+		// Fall back to a board that the user has manually put into download mode.
+		a.emitLog("⚠️ Switching to manual bootloader mode for multiple images...")
+		flasher, err = esp32.NewManual(portName, a.flasherCallbacks())
+		if err != nil {
+			return fmt.Errorf("failed to create flasher: %w", err)
+		}
+	}
+	defer flasher.Close()
+
+	// Negotiate a faster transfer rate when possible.
+	flasher.SetBaudRate(460800)
+
+	// Write each image at its caller-provided offset.
+	fileCount := 0
+	totalFiles := len(files)
+
+	for filename, offset := range files {
+		fileCount++
+		a.emitLog(fmt.Sprintf("📄 Flashing file %d/%d: %s -> 0x%x", fileCount, totalFiles, filename, offset))
+
+		data, err := os.ReadFile(filename)
+		if err != nil {
+			return fmt.Errorf("failed to read file %s: %w", filename, err)
+		}
+
+		if err := flasher.Flash(data, offset); err != nil {
+			return fmt.Errorf("failed to flash %s: %w", filename, err)
 		}
 	}
 
-	// Close port immediately - this will cause Read() to return error and exit goroutine
-	if a.monitorPort != nil {
-		a.monitorPort.Close()
-		a.monitorPort = nil
+	if err := flasher.RebootTarget(); err != nil {
+		return fmt.Errorf("failed to reboot ESP32 after flashing: %w", err)
 	}
-
-	// Now safe to close channel
-	if a.stopMonitor != nil {
-		close(a.stopMonitor)
-		a.stopMonitor = nil
-	}
-
-	a.lineBuffer = "" // Clear line buffer
-
-	runtime.EventsEmit(a.ctx, "monitor-stop", "")
-	a.emitLog("⏹️ Monitor stopped")
+	a.emitLog("✅ All files were flashed successfully!")
+	return nil
 }

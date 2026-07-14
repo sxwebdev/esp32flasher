@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
@@ -7,108 +7,178 @@
     <link rel="stylesheet" href="./src/style.css" />
   </head>
   <body>
-    <div class="container">
-      <main class="main-content">
-        <div class="control-group">
-          <label class="label">COM Port:</label>
-          <div class="input-row">
-            <select id="portSelect" class="select"></select>
-            <select id="baudSelect" class="select" style="max-width: 120px">
-              <option value="9600">9600</option>
-              <option value="115200" selected>115200</option>
-              <option value="460800">460800</option>
-              <option value="921600">921600</option>
-            </select>
-            <button id="btnRefresh" class="btn btn-secondary">Refresh</button>
-          </div>
+    <div class="app-shell">
+      <header class="topbar">
+        <div class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none">
+            <path d="M8 3v3M12 3v3M16 3v3M8 18v3M12 18v3M16 18v3M3 8h3M3 12h3M3 16h3M18 8h3M18 12h3M18 16h3" />
+            <rect x="6" y="6" width="12" height="12" rx="2" />
+            <path d="M10 10h4v4h-4z" />
+          </svg>
         </div>
-
-        <div class="control-group">
-          <label class="label">Firmware file (.bin):</label>
-          <div class="input-row">
-            <input
-              type="text"
-              id="filePath"
-              readonly
-              class="input file-input"
-              placeholder="Select file..."
-            />
-            <button id="btnChoose" class="btn btn-secondary">Browse</button>
+        <div class="brand-copy">
+          <div class="brand-line">
+            <h1>ESP32 FLASHER</h1>
+            <span class="version-tag">ROM TOOL</span>
           </div>
+          <p>Firmware deployment console</p>
         </div>
-
-        <div class="control-group">
-          <label class="label">Flash address:</label>
-          <div class="input-row">
-            <select id="offsetSelect" class="select">
-              <option value="0x0">0x0 - Merged (full image)</option>
-              <option value="0x10000" selected>0x10000 - App only</option>
-              <option value="0x1000">0x1000 - Bootloader</option>
-              <option value="0x8000">0x8000 - Partitions</option>
-              <option value="custom">Custom...</option>
-            </select>
-            <input
-              type="text"
-              id="customOffset"
-              class="input"
-              placeholder="0x..."
-              style="display: none; max-width: 120px"
-            />
-          </div>
+        <div class="system-status" id="systemStatus">
+          <span class="status-led" aria-hidden="true"></span>
+          <span>System ready</span>
         </div>
+      </header>
 
-        <div class="control-group additional-files">
-          <div class="additional-header">
-            <label class="label">Additional files (optional):</label>
-            <button id="btnToggleAdditional" class="btn btn-compact">+ Add</button>
-          </div>
-          <div id="additionalFilesContainer" style="display: none;">
-            <div class="additional-file-row">
-              <span class="file-label">Bootloader (0x1000):</span>
-              <input type="text" id="bootloaderPath" readonly class="input file-input-small" placeholder="Not selected" />
-              <button id="btnChooseBootloader" class="btn btn-compact">...</button>
-              <button id="btnClearBootloader" class="btn btn-compact btn-clear">✕</button>
+      <main class="workspace">
+        <section class="panel setup-panel" aria-labelledby="setupTitle">
+          <div class="panel-header">
+            <div>
+              <span class="eyebrow">Configuration</span>
+              <h2 id="setupTitle">Device</h2>
             </div>
-            <div class="additional-file-row">
-              <span class="file-label">Partitions (0x8000):</span>
-              <input type="text" id="partitionsPath" readonly class="input file-input-small" placeholder="Not selected" />
-              <button id="btnChoosePartitions" class="btn btn-compact">...</button>
-              <button id="btnClearPartitions" class="btn btn-compact btn-clear">✕</button>
+            <span class="panel-index">01</span>
+          </div>
+
+          <div class="field-group">
+            <label class="label" for="portSelect">Serial port</label>
+            <div class="input-row port-row">
+              <select id="portSelect" class="select"></select>
+              <button
+                id="btnRefresh"
+                class="btn btn-icon"
+                type="button"
+                title="Refresh port list"
+                aria-label="Refresh port list"
+              >
+                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <path d="M20 7v5h-5M4 17v-5h5" />
+                  <path d="M6.1 9A7 7 0 0 1 18 6l2 2M17.9 15A7 7 0 0 1 6 18l-2-2" />
+                </svg>
+              </button>
             </div>
           </div>
-        </div>
 
-        <div class="control-group">
-          <button id="btnFlash" class="btn btn-primary">Flash ESP32</button>
-        </div>
+          <div class="field-group">
+            <label class="label" for="baudSelect">Port speed</label>
+            <div class="select-with-unit">
+              <select id="baudSelect" class="select">
+                <option value="9600">9 600</option>
+                <option value="115200" selected>115 200</option>
+                <option value="460800">460 800</option>
+                <option value="921600">921 600</option>
+              </select>
+              <span>BAUD</span>
+            </div>
+          </div>
 
-        <div
-          id="progressContainer"
-          class="progress-container"
-          style="display: none"
-        >
-          <label class="label">Flash progress:</label>
-          <div class="progress-bar-wrapper">
+          <div class="section-rule"></div>
+
+          <div class="field-group firmware-group">
+            <label class="label" for="filePath">Firmware image</label>
+            <div class="file-control">
+              <div class="file-path-wrap">
+                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                  <path d="M14 2v6h6M8 13h8M8 17h6" />
+                </svg>
+                <input
+                  type="text"
+                  id="filePath"
+                  readonly
+                  class="input file-input"
+                  placeholder="No file selected"
+                />
+              </div>
+              <button id="btnChoose" class="btn btn-secondary" type="button">
+                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <path d="M3 7h6l2 2h10v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z" />
+                  <path d="M3 7V5a2 2 0 0 1 2-2h4l2 2h6" />
+                </svg>
+                <span>Select .bin</span>
+              </button>
+            </div>
+            <p class="field-hint">The write address is detected automatically</p>
+          </div>
+
+          <button id="btnFlash" class="btn btn-primary" type="button">
+            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path d="m13 2-9 12h8l-1 8 9-12h-8l1-8z" />
+            </svg>
+            <span>Flash firmware</span>
+            <kbd>ENTER</kbd>
+          </button>
+
+          <div id="progressContainer" class="progress-container" hidden>
+            <div class="progress-meta">
+              <span>Writing Flash</span>
+              <span id="progressText" class="progress-text">0%</span>
+            </div>
             <div class="progress-bar">
               <div id="progressBar" class="progress-fill"></div>
             </div>
-            <span id="progressText" class="progress-text">0%</span>
           </div>
-        </div>
+        </section>
 
-        <div class="log-container">
-          <div class="log-header">
-            <label class="label">Log:</label>
+        <section class="panel terminal-panel" aria-labelledby="terminalTitle">
+          <div class="terminal-header">
+            <div class="terminal-title">
+              <span class="terminal-icon" aria-hidden="true">›_</span>
+              <div>
+                <span class="eyebrow">Device output</span>
+                <h2 id="terminalTitle">Serial console</h2>
+              </div>
+            </div>
             <div class="log-controls">
-              <button id="btnMonitor" class="btn btn-compact">Monitor</button>
-              <button id="btnStopMonitor" class="btn btn-compact btn-stop" style="display: none">Stop</button>
-              <button id="btnAutoScroll" class="btn btn-compact btn-toggle active">Auto</button>
-              <button id="btnCopyLog" class="btn btn-compact">Copy</button>
-              <button id="btnClearLog" class="btn btn-compact">Clear</button>
+              <button id="btnMonitor" class="btn btn-tool" type="button">
+                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <path d="M8 5v14M16 5v14M4 9h4M16 9h4M4 15h4M16 15h4" />
+                </svg>
+                <span>Monitor</span>
+              </button>
+              <button id="btnStopMonitor" class="btn btn-tool btn-stop" type="button" hidden>
+                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <rect x="6" y="6" width="12" height="12" rx="1" />
+                </svg>
+                <span>Stop</span>
+              </button>
+              <button
+                id="btnAutoScroll"
+                class="btn btn-tool btn-toggle active"
+                type="button"
+                aria-pressed="true"
+                title="Automatic scrolling"
+              >
+                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <path d="M12 4v14M7 13l5 5 5-5" />
+                </svg>
+                <span>Auto-scroll</span>
+              </button>
+              <button
+                id="btnClearLog"
+                class="btn btn-icon btn-ghost"
+                type="button"
+                title="Clear console"
+                aria-label="Clear console"
+              >
+                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <path d="M4 7h16M10 11v6M14 11v6M9 7l1-3h4l1 3M6 7l1 14h10l1-14" />
+                </svg>
+              </button>
             </div>
           </div>
-          <pre id="log" class="log"></pre>
-        </div>
+
+          <div class="terminal-body">
+            <div class="terminal-gutter" aria-hidden="true">
+              <span>TX</span>
+              <span>RX</span>
+            </div>
+            <pre id="log" class="log" aria-live="off"></pre>
+          </div>
+          <div class="terminal-footer">
+            <span><i class="footer-dot"></i> UTF-8 / BINARY GUARD</span>
+            <span id="logCounter">0 lines</span>
+          </div>
+        </section>
       </main>
     </div>
 

@@ -1,7 +1,6 @@
 import {
   ListPorts,
   Flash,
-  FlashMultiple,
   ChooseFile,
   MonitorPort,
   StopMonitor,
@@ -10,146 +9,126 @@ import { EventsOn } from "../wailsjs/runtime/runtime.js";
 
 const portSelect = document.getElementById("portSelect");
 const baudSelect = document.getElementById("baudSelect");
-const offsetSelect = document.getElementById("offsetSelect");
-const customOffset = document.getElementById("customOffset");
 const btnRefresh = document.getElementById("btnRefresh");
 const btnChoose = document.getElementById("btnChoose");
 const btnFlash = document.getElementById("btnFlash");
 const btnMonitor = document.getElementById("btnMonitor");
 const btnStopMonitor = document.getElementById("btnStopMonitor");
 const btnClearLog = document.getElementById("btnClearLog");
-const btnCopyLog = document.getElementById("btnCopyLog");
 const btnAutoScroll = document.getElementById("btnAutoScroll");
 const filePath = document.getElementById("filePath");
 const logArea = document.getElementById("log");
 const progressContainer = document.getElementById("progressContainer");
 const progressBar = document.getElementById("progressBar");
 const progressText = document.getElementById("progressText");
-const btnToggleAdditional = document.getElementById("btnToggleAdditional");
-const additionalFilesContainer = document.getElementById("additionalFilesContainer");
-const bootloaderPath = document.getElementById("bootloaderPath");
-const partitionsPath = document.getElementById("partitionsPath");
-const btnChooseBootloader = document.getElementById("btnChooseBootloader");
-const btnChoosePartitions = document.getElementById("btnChoosePartitions");
-const btnClearBootloader = document.getElementById("btnClearBootloader");
-const btnClearPartitions = document.getElementById("btnClearPartitions");
-
-// Show/hide custom offset field
-offsetSelect.addEventListener("change", () => {
-  if (offsetSelect.value === "custom") {
-    customOffset.style.display = "block";
-    customOffset.focus();
-  } else {
-    customOffset.style.display = "none";
-  }
-});
-
-// Get current flash offset
-function getFlashOffset() {
-  if (offsetSelect.value === "custom") {
-    const val = customOffset.value.trim();
-    if (val.startsWith("0x") || val.startsWith("0X")) {
-      return parseInt(val, 16);
-    }
-    return parseInt(val, 10);
-  }
-  return parseInt(offsetSelect.value, 16);
-}
+const systemStatus = document.getElementById("systemStatus");
+const logCounter = document.getElementById("logCounter");
 
 let isMonitoring = false;
-let autoScrollEnabled = true;
-let logLines = [];
-const MAX_LOG_LINES = 300;
+let logUpdateTimeout = null; // Batches log rendering updates.
+let autoScrollEnabled = true; // Auto-scroll is enabled by default.
+let logLines = []; // In-memory terminal line buffer.
+let logCharacterCount = 0;
+let lastProgressLog = null;
+const LOG_RENDER_INTERVAL_MS = 50;
+const MAX_LOG_LINES = 500;
+const MAX_LOG_CHARACTERS = 160_000;
+const MAX_LOG_LINE_CHARACTERS = 2_048;
 
-// Throttling for DOM updates
-let pendingLines = [];
-let updateScheduled = false;
-let lastUpdateTime = 0;
-const MIN_UPDATE_INTERVAL = 100; // Minimum 100ms between updates
-
-// Schedule DOM update with throttling
-function scheduleUpdate() {
-  if (updateScheduled) return;
-
-  const now = Date.now();
-  const timeSinceLastUpdate = now - lastUpdateTime;
-
-  if (timeSinceLastUpdate < MIN_UPDATE_INTERVAL) {
-    // Delay update
-    updateScheduled = true;
-    setTimeout(() => {
-      updateScheduled = false;
-      flushPendingLines();
-    }, MIN_UPDATE_INTERVAL - timeSinceLastUpdate);
-  } else {
-    flushPendingLines();
-  }
+// Append a timestamped message to the log.
+function log(msg) {
+  const timestamp = new Date().toLocaleTimeString();
+  addLogLine(`[${timestamp}] ${msg}`);
 }
 
-// Apply pending lines to DOM
-function flushPendingLines() {
-  if (pendingLines.length === 0) return;
+// Append one line to the terminal efficiently.
+function addLogLine(line) {
+  appendLogLines([line]);
+}
 
-  lastUpdateTime = Date.now();
-
-  // Add pending lines
-  logLines.push(...pendingLines);
-  pendingLines = [];
-
-  // Limit number of lines
-  if (logLines.length > MAX_LOG_LINES) {
-    logLines = logLines.slice(-MAX_LOG_LINES);
+function appendLogLines(lines) {
+  for (const value of lines) {
+    let line = String(value).trim();
+    if (!line) {
+      continue;
+    }
+    if (line.length > MAX_LOG_LINE_CHARACTERS) {
+      line = `${line.slice(0, MAX_LOG_LINE_CHARACTERS)} … [truncated]`;
+    }
+    logLines.push(line);
+    logCharacterCount += line.length;
   }
 
-  // Update DOM once
-  logArea.textContent = logLines.join("\n");
+  while (logLines.length > MAX_LOG_LINES || logCharacterCount > MAX_LOG_CHARACTERS) {
+    const removed = logLines.shift();
+    if (removed === undefined) {
+      break;
+    }
+    logCharacterCount -= removed.length;
+  }
 
-  // Auto-scroll
+  scheduleLogRender();
+}
+
+function scheduleLogRender() {
+  if (logUpdateTimeout !== null) {
+    return;
+  }
+  logUpdateTimeout = setTimeout(renderLog, LOG_RENDER_INTERVAL_MS);
+}
+
+function renderLog() {
+  if (logUpdateTimeout !== null) {
+    clearTimeout(logUpdateTimeout);
+    logUpdateTimeout = null;
+  }
+
+  logArea.textContent = logLines.join("\n");
+  updateLogCounter();
+
   if (autoScrollEnabled) {
     logArea.scrollTop = logArea.scrollHeight;
   }
 }
 
-// Format time with milliseconds
-function formatTime(date) {
-  const h = String(date.getHours()).padStart(2, "0");
-  const m = String(date.getMinutes()).padStart(2, "0");
-  const s = String(date.getSeconds()).padStart(2, "0");
-  const ms = String(date.getMilliseconds()).padStart(3, "0");
-  return `${h}:${m}:${s}.${ms}`;
+function clearLog() {
+  logLines = [];
+  logCharacterCount = 0;
+  renderLog();
 }
 
-// Add log entry
-function log(msg) {
-  const timestamp = formatTime(new Date());
-  addLogLine(`[${timestamp}] ${msg}`);
+function updateLogCounter() {
+  const count = logLines.length;
+  const suffix = count === 1 ? "line" : "lines";
+  logCounter.textContent = `${count} ${suffix}`;
 }
 
-// Efficient log line addition
-function addLogLine(line) {
-  pendingLines.push(line);
-  scheduleUpdate();
+function setSystemStatus(text, busy = false) {
+  systemStatus.classList.toggle("busy", busy);
+  systemStatus.querySelector("span:last-child").textContent = text;
 }
 
-// Update progress
+// Update flash progress.
 function updateProgress(progress, message) {
   progressBar.style.width = `${progress}%`;
   progressText.textContent = `${progress}%`;
-  if (message) {
+  if (message && progress !== lastProgressLog) {
+    lastProgressLog = progress;
     log(message);
   }
 }
 
-// Show/hide progress
+// Show or hide flash progress.
 function showProgress(show) {
-  progressContainer.style.display = show ? "block" : "none";
+  progressContainer.hidden = !show;
   if (!show) {
     progressBar.style.width = "0%";
     progressText.textContent = "0%";
+    lastProgressLog = null;
   }
 }
 
-// Setup progress events
+// Subscribe to flash progress events.
 EventsOn("flash-progress", (data) => {
   updateProgress(data.progress, data.message);
 });
@@ -158,12 +137,18 @@ EventsOn("flash-log", (message) => {
   log(message);
 });
 
-// Port monitor events
+// Subscribe to serial monitor events.
 EventsOn("monitor-data", (data) => {
-  if (data.trim()) {
-    const timestamp = formatTime(new Date());
-    addLogLine(`[${timestamp}] ${data.trim()}`);
+  if (!isMonitoring) {
+    return;
   }
+  const timestamp = new Date().toLocaleTimeString();
+  const lines = String(data)
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => `[${timestamp}] ${line}`);
+  appendLogLines(lines);
 });
 
 EventsOn("monitor-error", (error) => {
@@ -175,7 +160,7 @@ EventsOn("monitor-stop", () => {
   stopMonitoring();
 });
 
-// Refresh and display ports
+// Discover and display serial ports.
 async function refreshPorts() {
   portSelect.innerHTML = "";
   try {
@@ -192,14 +177,7 @@ async function refreshPorts() {
   }
 }
 
-// Toggle additional files section
-btnToggleAdditional.addEventListener("click", () => {
-  const isVisible = additionalFilesContainer.style.display !== "none";
-  additionalFilesContainer.style.display = isVisible ? "none" : "block";
-  btnToggleAdditional.textContent = isVisible ? "+ Add" : "- Hide";
-});
-
-// File selection
+// Select a firmware image.
 btnChoose.addEventListener("click", async () => {
   try {
     const res = await ChooseFile();
@@ -212,121 +190,40 @@ btnChoose.addEventListener("click", async () => {
   }
 });
 
-// Bootloader file selection
-btnChooseBootloader.addEventListener("click", async () => {
-  try {
-    const res = await ChooseFile();
-    if (res) {
-      bootloaderPath.value = res;
-      log("Bootloader: " + res);
-    }
-  } catch (e) {
-    log("File selection error: " + e);
-  }
-});
-
-// Partitions file selection
-btnChoosePartitions.addEventListener("click", async () => {
-  try {
-    const res = await ChooseFile();
-    if (res) {
-      partitionsPath.value = res;
-      log("Partitions: " + res);
-    }
-  } catch (e) {
-    log("File selection error: " + e);
-  }
-});
-
-// Clear bootloader
-btnClearBootloader.addEventListener("click", () => {
-  bootloaderPath.value = "";
-});
-
-// Clear partitions
-btnClearPartitions.addEventListener("click", () => {
-  partitionsPath.value = "";
-});
-
-// Flash button
+// Flash button.
 btnFlash.addEventListener("click", async () => {
   const port = portSelect.value;
   const file = filePath.value;
-  const offset = getFlashOffset();
-  const bootloader = bootloaderPath.value;
-  const partitions = partitionsPath.value;
-
   if (!port || !file) {
-    alert("Select port and file!");
-    return;
-  }
-
-  if (isNaN(offset) || offset < 0) {
-    alert("Invalid flash address!");
+    alert("Select a port and firmware file.");
     return;
   }
 
   if (isMonitoring) {
-    alert("Stop monitor before flashing!");
+    alert("Stop serial monitoring before flashing.");
     return;
   }
 
-  // Disable UI
+  // Lock conflicting controls during flashing.
   btnFlash.disabled = true;
   btnChoose.disabled = true;
   btnRefresh.disabled = true;
   btnMonitor.disabled = true;
   portSelect.disabled = true;
   baudSelect.disabled = true;
-  offsetSelect.disabled = true;
-  customOffset.disabled = true;
-  btnChooseBootloader.disabled = true;
-  btnChoosePartitions.disabled = true;
-  btnClearBootloader.disabled = true;
-  btnClearPartitions.disabled = true;
+  setSystemStatus("Flashing", true);
 
-  // Clear log and show progress
-  logArea.textContent = "";
-  logLines = [];
+  // Clear the log and reveal progress.
+  clearLog();
   showProgress(true);
 
-  // Build list of files to flash
-  const hasAdditionalFiles = bootloader || partitions;
+  log(`🚀 Starting flash ${file} → ${port}`);
 
   try {
-    if (hasAdditionalFiles) {
-      // Use FlashMultiple for multiple files
-      const files = [];
-
-      // Bootloader first (0x1000)
-      if (bootloader) {
-        files.push({ path: bootloader, offset: 0x1000 });
-      }
-
-      // Partition table (0x8000)
-      if (partitions) {
-        files.push({ path: partitions, offset: 0x8000 });
-      }
-
-      // Main app last
-      files.push({ path: file, offset: offset });
-
-      log(`🚀 Flashing ${files.length} files to ${port}`);
-      files.forEach(f => {
-        log(`   📄 ${f.path} @ 0x${f.offset.toString(16).toUpperCase()}`);
-      });
-
-      await FlashMultiple(port, files);
-    } else {
-      // Single file flash
-      log(
-        `🚀 Starting flash ${file} → ${port} @ 0x${offset.toString(16).toUpperCase()}`
-      );
-      await Flash(port, file, offset);
-    }
-
+    await Flash(port, file);
+    log("✅ Firmware flashed successfully!");
     setTimeout(() => {
-      alert("Flash completed successfully!");
+      alert("Firmware flashed successfully!");
     }, 100);
   } catch (e) {
     log("❌ Flash error: " + e);
@@ -335,7 +232,7 @@ btnFlash.addEventListener("click", async () => {
       alert("Flash error: " + e);
     }, 100);
   } finally {
-    // Enable UI and hide progress
+    // Restore the controls and hide progress.
     setTimeout(() => {
       showProgress(false);
       btnFlash.disabled = false;
@@ -344,120 +241,115 @@ btnFlash.addEventListener("click", async () => {
       btnMonitor.disabled = false;
       portSelect.disabled = false;
       baudSelect.disabled = false;
-      offsetSelect.disabled = false;
-      customOffset.disabled = false;
-      btnChooseBootloader.disabled = false;
-      btnChoosePartitions.disabled = false;
-      btnClearBootloader.disabled = false;
-      btnClearPartitions.disabled = false;
-    }, 1000); // Delay to show final state
+      setSystemStatus("System ready");
+    }, 1000); // Leave the final state visible briefly.
   }
 });
 
-// Monitor button
+// Serial monitor button.
 btnMonitor.addEventListener("click", async () => {
   const port = portSelect.value;
   const baud = parseInt(baudSelect.value);
   if (!port) {
-    alert("Select COM port for monitoring!");
+    alert("Select a serial port to monitor.");
     return;
   }
 
   try {
-    // Clear log before starting monitor
-    logArea.textContent = "";
+    // Clear old output before monitoring starts.
+    clearLog();
 
-    await MonitorPort(port, baud);
     startMonitoring();
-    log(`🔍 Monitor started on ${port} (${baud} baud)`);
+    await MonitorPort(port, baud);
+    log(`🔍 Monitoring ${port} at ${baud} baud`);
   } catch (e) {
-    log("❌ Monitor start error: " + e);
-    alert("Monitor start error: " + e);
+    stopMonitoring();
+    log("❌ Could not start monitoring: " + e);
+    alert("Could not start monitoring: " + e);
   }
 });
 
-// Stop monitor button
+// Stop-monitor button.
 btnStopMonitor.addEventListener("click", async () => {
-  // Disable button immediately to prevent double-click
-  btnStopMonitor.disabled = true;
+  stopMonitoring();
   try {
     await StopMonitor();
   } catch (e) {
-    log("❌ Monitor stop error: " + e);
-  } finally {
-    stopMonitoring();
-    btnStopMonitor.disabled = false;
+    log("❌ Could not stop monitoring: " + e);
   }
 });
 
-// Monitor functions
+// Serial monitor UI state.
 function startMonitoring() {
   isMonitoring = true;
-  btnMonitor.style.display = "none";
-  btnStopMonitor.style.display = "inline-block";
+  btnMonitor.hidden = true;
+  btnStopMonitor.hidden = false;
   btnFlash.disabled = true;
   portSelect.disabled = true;
   baudSelect.disabled = true;
+  setSystemStatus("Monitoring", true);
 }
 
 function stopMonitoring() {
   isMonitoring = false;
-  btnMonitor.style.display = "inline-block";
-  btnStopMonitor.style.display = "none";
+  btnMonitor.hidden = false;
+  btnStopMonitor.hidden = true;
   btnFlash.disabled = false;
   portSelect.disabled = false;
   baudSelect.disabled = false;
+  setSystemStatus("System ready");
+
+  renderLog();
 }
 
-// Copy log button
-btnCopyLog.addEventListener("click", async () => {
-  const text = logLines.join("\n");
-  try {
-    await navigator.clipboard.writeText(text);
-    const originalText = btnCopyLog.textContent;
-    btnCopyLog.textContent = "✅ Copied";
-    setTimeout(() => {
-      btnCopyLog.textContent = originalText;
-    }, 1500);
-  } catch (e) {
-    log("❌ Copy error: " + e);
-  }
-});
-
-// Clear log button
+// Clear-log button.
 btnClearLog.addEventListener("click", () => {
-  logLines = [];
-  pendingLines = [];
-  logArea.textContent = "";
+  clearLog();
   log("🗑️ Log cleared");
 });
 
-// Auto-scroll button
+// Auto-scroll button.
 btnAutoScroll.addEventListener("click", () => {
   autoScrollEnabled = !autoScrollEnabled;
 
   if (autoScrollEnabled) {
     btnAutoScroll.classList.add("active");
-    btnAutoScroll.textContent = "Auto";
+    btnAutoScroll.setAttribute("aria-pressed", "true");
+    // Jump to the newest line when re-enabled.
     requestAnimationFrame(() => {
       logArea.scrollTop = logArea.scrollHeight;
     });
+    log("📜 Auto-scroll enabled");
   } else {
     btnAutoScroll.classList.remove("active");
-    btnAutoScroll.textContent = "Auto";
+    btnAutoScroll.setAttribute("aria-pressed", "false");
+    log("⏸️ Auto-scroll disabled");
   }
 });
 
-// On start
+// Initial startup.
 btnRefresh.addEventListener("click", refreshPorts);
 
-// Initialize auto-scroll button state
+// Keyboard shortcut shown on the primary action.
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Enter" && !event.repeat && !btnFlash.disabled) {
+    const interactiveTarget = event.target instanceof Element
+      ? event.target.closest("button, select")
+      : null;
+    if (!interactiveTarget) {
+      btnFlash.click();
+    }
+  }
+});
+
+// Initialize the auto-scroll button state.
 if (autoScrollEnabled) {
   btnAutoScroll.classList.add("active");
-  btnAutoScroll.textContent = "Auto";
+  btnAutoScroll.setAttribute("aria-pressed", "true");
 } else {
   btnAutoScroll.classList.remove("active");
-  btnAutoScroll.textContent = "Auto";
+  btnAutoScroll.setAttribute("aria-pressed", "false");
 }
 
+updateLogCounter();
 refreshPorts();
