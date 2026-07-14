@@ -1,6 +1,11 @@
 package firmware
 
-import "testing"
+import (
+	"bytes"
+	"errors"
+	"os"
+	"testing"
+)
 
 func TestClassifyFirmwareImage(t *testing.T) {
 	t.Context()
@@ -57,5 +62,44 @@ func TestClassifyFirmwareImage(t *testing.T) {
 				t.Fatalf("Detect() = %+v, want %+v", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestHardworkerFirmwareFixtures(t *testing.T) {
+	t.Context()
+
+	applicationPath := "../../testdata/esp32_rx_hardworker_latest.bin"
+	application, err := os.ReadFile(applicationPath)
+	if errors.Is(err, os.ErrNotExist) {
+		t.Skip("local application firmware fixture is not available")
+	}
+	if err != nil {
+		t.Fatalf("read application fixture: %v", err)
+	}
+
+	mergedPath := "../../testdata/esp32_rx_hardworker_latest.merged.bin"
+	merged, err := os.ReadFile(mergedPath)
+	if errors.Is(err, os.ErrNotExist) {
+		t.Skip("local merged firmware fixture is not available")
+	}
+	if err != nil {
+		t.Fatalf("read merged fixture: %v", err)
+	}
+
+	applicationImage := Detect(applicationPath, application)
+	if applicationImage != (Image{Offset: 0x10000}) {
+		t.Fatalf("application classification = %+v, want offset 0x10000", applicationImage)
+	}
+	mergedImage := Detect(mergedPath, merged)
+	if mergedImage != (Image{Offset: 0, Full: true}) {
+		t.Fatalf("merged classification = %+v, want full image at offset 0", mergedImage)
+	}
+
+	applicationEnd := int(applicationImage.Offset) + len(application)
+	if applicationEnd > len(merged) {
+		t.Fatalf("application range ends at 0x%x, merged image size is 0x%x", applicationEnd, len(merged))
+	}
+	if !bytes.Equal(application, merged[applicationImage.Offset:applicationEnd]) {
+		t.Fatal("application fixture does not match the payload at 0x10000 in the merged fixture")
 	}
 }

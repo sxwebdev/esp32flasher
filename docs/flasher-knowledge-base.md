@@ -74,8 +74,9 @@ The main operation follows this order:
 11. Send 1024-byte `FLASH_DATA` blocks, padding the final block with `0xFF`.
 12. Ask the ROM to calculate MD5 over the exact, unpadded image range.
 13. Compare the ROM digest with the local image digest.
-14. Send `FLASH_END`.
-15. Reset the board into normal execution mode.
+14. Send `FLASH_END` with the stay-in-loader flag.
+15. Restore the host UART to 115200 baud.
+16. Perform one hardware reset into normal execution mode.
 
 Do not reorder SPI configuration after `FLASH_BEGIN`. On the tested ESP32 ROM, omitting `SPI_SET_PARAMS` caused ROM status `1` with reason `0x06`.
 
@@ -109,6 +110,19 @@ Serial libraries expose logical DTR/RTS states, while USB-to-UART hardware is co
 
 If automatic entry fails, the user can hold BOOT, press and release EN/RESET, release BOOT, and retry.
 
+### Reset after a successful flash
+
+Do not ask `FLASH_END` to reboot and then immediately perform a hardware reset. Those two mechanisms can race, and a successful serial control-line call does not prove that the application started. The completion sequence intentionally keeps the ROM loader active, restores the host UART to 115200, and performs one hard reset:
+
+1. release GPIO0 and EN;
+2. wait 50 ms for a stable neutral state;
+3. hold EN low for 100 ms;
+4. release EN while GPIO0 remains high;
+5. wait 500 ms before closing the serial port;
+6. leave both DTR and RTS released.
+
+This matches the normal-boot intent of Arduino IDE/esptool: verification completes before reset, and the final reset is an RTS/EN pulse with the boot pin released.
+
 ## ROM packet format and SLIP
 
 Commands use an eight-byte little-endian header followed by command data:
@@ -125,17 +139,17 @@ One SYNC request can generate multiple SYNC responses. The implementation drains
 
 ## Commands used
 
-| Command | ID | Purpose |
-| --- | ---: | --- |
-| `FLASH_BEGIN` | `0x02` | Erase the range and begin a Flash transfer |
-| `FLASH_DATA` | `0x03` | Write one data block |
-| `FLASH_END` | `0x04` | Finish the Flash operation |
-| `SYNC` | `0x08` | Establish or validate communication |
-| `READ_REG` | `0x0A` | Read the chip-detection register |
-| `SPI_SET_PARAMS` | `0x0B` | Tell the ROM the Flash geometry |
-| `SPI_ATTACH` | `0x0D` | Attach the SPI Flash peripheral |
-| `CHANGE_BAUDRATE` | `0x0F` | Change ROM serial speed |
-| `SPI_FLASH_MD5` | `0x13` | Calculate a digest over a Flash range |
+| Command           |     ID | Purpose                                    |
+| ----------------- | -----: | ------------------------------------------ |
+| `FLASH_BEGIN`     | `0x02` | Erase the range and begin a Flash transfer |
+| `FLASH_DATA`      | `0x03` | Write one data block                       |
+| `FLASH_END`       | `0x04` | Finish the Flash operation                 |
+| `SYNC`            | `0x08` | Establish or validate communication        |
+| `READ_REG`        | `0x0A` | Read the chip-detection register           |
+| `SPI_SET_PARAMS`  | `0x0B` | Tell the ROM the Flash geometry            |
+| `SPI_ATTACH`      | `0x0D` | Attach the SPI Flash peripheral            |
+| `CHANGE_BAUDRATE` | `0x0F` | Change ROM serial speed                    |
+| `SPI_FLASH_MD5`   | `0x13` | Calculate a digest over a Flash range      |
 
 `READ_REG` is special: its returned register value is in the 32-bit header value field at response bytes `4:8`, not in the trailing status bytes.
 
@@ -170,6 +184,22 @@ If validation fails, the host returns to 115200 and re-enters the ROM bootloader
 
 Reopening the port solely to change baud rate can toggle DTR/RTS and reset the board unexpectedly. Prefer changing the mode on the existing port.
 
+## Optional stub-loader fast path
+
+The historical `master` implementation embedded an esptool ESP32 RAM stub, compressed firmware with zlib, and sent 16 KiB deflate blocks. This is the main optimization worth revisiting because it can reduce both transferred bytes and per-block acknowledgements.
+
+Do not copy that implementation directly into the ROM path. Its embedded stub is specific to the classic ESP32, it writes each SLIP frame with one unchecked serial `Write`, and it treats an MD5 command failure as a warning. A production stub path must:
+
+- select a pinned stub by detected chip family and revision;
+- preserve `writeAll` and the streaming SLIP response parser;
+- validate the stub handshake before changing protocol semantics;
+- keep command retries bounded;
+- make every erase, deflate-end, and MD5 error fatal;
+- fall back to the existing ROM implementation if stub upload or startup fails;
+- retain ROM mode as the recovery path.
+
+The ROM transfer block must remain 1024 bytes. A 16 KiB block is appropriate only after the RAM stub is running and explicitly supports the deflate protocol.
+
 ## Verification and NVS
 
 Verification must happen while the ROM bootloader still owns the chip. Once the application boots, it may initialize or update NVS immediately. A full-chip read performed after reboot can therefore differ from the original merged image even when flashing was correct.
@@ -178,9 +208,17 @@ The verified range is exactly `offset` through `offset + image length`. The ROM-
 
 ## Serial monitor
 
-The serial monitor reads with a 50 ms timeout, buffers incomplete lines, emits complete non-empty lines, and flushes a line fragment if the buffer exceeds 1000 bytes. The frontend keeps up to 1000 displayed lines.
+The monitor must open the port with `InitialStatusBits` set to `DTR=false` and `RTS=false`, then explicitly release both lines again after opening. The serial package otherwise defaults both outputs to asserted. That can drive GPIO0 and EN on adapters wired directly to the ESP32 and leave the target in the wrong boot/reset state.
 
-The current monitor state is stored on `App`. Future changes should protect port and buffer state if monitoring can be started or stopped concurrently from multiple goroutines. In particular, avoid closing a channel twice or accessing a port after another goroutine has closed it.
+The serial monitor reads with a 50 ms timeout and keeps incomplete lines in a byte buffer. Complete UTF-8 text lines are emitted in batches no more often than every 75 ms. A line is split after 4096 bytes so an unterminated device stream cannot grow memory indefinitely.
+
+Invalid UTF-8 and control-heavy data is treated as binary. Instead of forwarding replacement characters for every byte, the backend reports one compact warning per second with the byte count and a short hexadecimal sample. This usually indicates an incorrect baud rate or a device protocol that is binary rather than a text console.
+
+Consecutive identical text lines are also coalesced. The first line is emitted normally, then the backend reports `Previous line repeated N times` no more than once per second. This is a safety boundary for faulty firmware: a hardware capture found a target emitting more than 22 KiB of the literal line `g mode` in 250 ms. Do not silently discard the repetition count because it is evidence of a device-side log loop.
+
+Each monitor run owns an isolated session with its own port, stop signal, and completion signal. Port closure is idempotent, monitor start/stop operations are serialized, and Stop closes the port to unblock an active read instead of sleeping for a fixed duration.
+
+The frontend renders pending logs at most once every 50 ms. It retains at most 500 lines, 160,000 characters in total, and 2048 characters per displayed line. The terminal has `aria-live` disabled because repeatedly announcing a high-volume console can overload the webview accessibility layer.
 
 ## Testing
 
@@ -201,12 +239,36 @@ ESP32_FLASH_IMAGE=testdata/esp32_rx_hardworker_latest.merged.bin \
 go test ./internal/esp32 -run TestFlashESP32Hardware -v -count=1
 ```
 
+To validate an application-only update while preserving the existing bootloader and partition table:
+
+```bash
+ESP32_FLASH_PORT=/dev/cu.usbserial-0001 \
+ESP32_FLASH_IMAGE=testdata/esp32_rx_hardworker_latest.bin \
+go test ./internal/esp32 -run TestFlashESP32Hardware -v -count=1
+```
+
 Optional hardware-test modes:
 
 - `ESP32_PROBE_ONLY=1` enters the bootloader, detects the chip, and configures SPI without writing;
-- `ESP32_REBOOT_ONLY=1` only resets the target after establishing a bootloader connection.
+- `ESP32_REBOOT_ONLY=1` only resets the target after establishing a bootloader connection;
+- `ESP32_VERIFY_BOOT=1` requires exactly one `rst:`, normal SPI Flash boot, and the fixture application banner after reset;
+- `ESP32_VERIFY_UPTIME=1` extends boot verification to 35 seconds and reports any `g mode` lines without accepting additional resets.
 
-When the image path is omitted, the test resolves the repository fixture as `../../testdata/esp32_rx_hardworker_latest.merged.bin` because Go executes the package test from `internal/esp32`.
+The monitor control-line test is also opt-in and performs one reset without writing Flash:
+
+```bash
+ESP32_MONITOR_PORT=/dev/cu.usbserial-0001 \
+go test . -run TestMonitorESP32Hardware -v -count=1
+```
+
+For a short, unprocessed UART diagnostic sample without reset or Flash writes:
+
+```bash
+ESP32_MONITOR_CAPTURE_PORT=/dev/cu.usbserial-0001 \
+go test . -run TestMonitorESP32RawCapture -v -count=1
+```
+
+Relative image paths are resolved from either the package directory or the repository root. When the image path is omitted, the test uses `testdata/esp32_rx_hardworker_latest.merged.bin`.
 
 ## Release builds
 

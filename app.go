@@ -6,6 +6,7 @@ import (
 	"espflasher/internal/firmware"
 	"fmt"
 	"os"
+	"sync"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 	serialport "go.bug.st/serial"
@@ -13,10 +14,15 @@ import (
 
 // App struct
 type App struct {
-	ctx         context.Context
-	monitorPort serialport.Port
-	stopMonitor chan bool
-	lineBuffer  string // Buffer for incomplete serial lines.
+	ctx context.Context
+
+	monitorControlMu sync.Mutex
+	monitorMu        sync.Mutex
+	monitor          *monitorSession
+
+	progressMu   sync.Mutex
+	progressSet  bool
+	lastProgress int
 }
 
 // NewApp creates a new App application struct
@@ -52,10 +58,25 @@ func (a *App) ChooseFile() (string, error) {
 
 // emitProgress sends flashing progress to the frontend.
 func (a *App) emitProgress(progress int, message string) {
+	a.progressMu.Lock()
+	if a.progressSet && progress == a.lastProgress {
+		a.progressMu.Unlock()
+		return
+	}
+	a.progressSet = true
+	a.lastProgress = progress
+	a.progressMu.Unlock()
+
 	runtime.EventsEmit(a.ctx, "flash-progress", map[string]any{
 		"progress": progress,
 		"message":  message,
 	})
+}
+
+func (a *App) resetProgress() {
+	a.progressMu.Lock()
+	a.progressSet = false
+	a.progressMu.Unlock()
 }
 
 // emitLog sends a log message to the frontend.
@@ -72,6 +93,8 @@ func (a *App) flasherCallbacks() *esp32.Callbacks {
 
 // Flash writes a full merged image at 0x0 or an application image at 0x10000.
 func (a *App) Flash(portName, filePath string) error {
+	a.resetProgress()
+
 	// Check that the image still exists before opening the serial port.
 	if _, err := os.Stat(filePath); os.IsNotExist(err) {
 		return fmt.Errorf("file does not exist: %s", filePath)
@@ -113,7 +136,6 @@ func (a *App) Flash(portName, filePath string) error {
 	}
 
 	// Reboot into normal execution only after ROM-side verification succeeds.
-	a.emitLog("🔄 Rebooting ESP32...")
 	if err := flasher.RebootTarget(); err != nil {
 		return fmt.Errorf("failed to reboot ESP32 after flashing: %w", err)
 	}
@@ -184,7 +206,9 @@ func (a *App) FlashMultipleFiles(portName string, files map[string]uint32) error
 		}
 	}
 
-	flasher.RebootTarget()
+	if err := flasher.RebootTarget(); err != nil {
+		return fmt.Errorf("failed to reboot ESP32 after flashing: %w", err)
+	}
 	a.emitLog("✅ All files were flashed successfully!")
 	return nil
 }

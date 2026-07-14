@@ -14,6 +14,8 @@ type fakeSerialPort struct {
 	actions    []string
 	failAction string
 	baudRates  []int
+	readData   []byte
+	writes     [][]byte
 }
 
 func (p *fakeSerialPort) record(action string) error {
@@ -28,8 +30,15 @@ func (p *fakeSerialPort) SetMode(mode *serial.Mode) error {
 	p.baudRates = append(p.baudRates, mode.BaudRate)
 	return nil
 }
-func (p *fakeSerialPort) Read([]byte) (int, error)           { return 0, nil }
-func (p *fakeSerialPort) Write(b []byte) (int, error)        { return len(b), nil }
+func (p *fakeSerialPort) Read(b []byte) (int, error) {
+	n := copy(b, p.readData)
+	p.readData = p.readData[n:]
+	return n, nil
+}
+func (p *fakeSerialPort) Write(b []byte) (int, error) {
+	p.writes = append(p.writes, append([]byte(nil), b...))
+	return len(b), nil
+}
 func (p *fakeSerialPort) Drain() error                       { return nil }
 func (p *fakeSerialPort) ResetInputBuffer() error            { return nil }
 func (p *fakeSerialPort) ResetOutputBuffer() error           { return nil }

@@ -436,7 +436,9 @@ func (f *ESP32Flasher) flashEnd() error {
 	}
 
 	data := make([]byte, 4)
-	binary.LittleEndian.PutUint32(data, 0) // 0 = reboot after leaving the ROM loader.
+	// Keep the ROM loader running until RebootTarget performs one deterministic
+	// hardware reset. A zero value would reboot here and race the RTS pulse.
+	binary.LittleEndian.PutUint32(data, 1)
 
 	if err := f.sendCommand(ESP_FLASH_END, data, 0); err != nil {
 		return fmt.Errorf("failed to send flash end: %w", err)
@@ -680,23 +682,55 @@ func (f *ESP32Flasher) setHostBaudRate(baudRate int) error {
 
 // RebootTarget resets the ESP32 into normal execution mode.
 func (f *ESP32Flasher) RebootTarget() error {
+	return f.rebootTarget(time.Sleep)
+}
+
+func (f *ESP32Flasher) rebootTarget(sleep func(time.Duration)) error {
 	if f.callback != nil {
-		f.callback.emitLog("🔄 Rebooting ESP32...")
+		f.callback.emitLog("🔄 Rebooting ESP32 into the flashed application...")
 	}
 
+	// Flashing may have negotiated a high UART rate. Restore the application
+	// monitor rate before reset so boot output can be read immediately.
+	if err := f.setHostBaudRate(115200); err != nil {
+		return fmt.Errorf("restore application baud rate: %w", err)
+	}
+	if err := f.normalBootReset(sleep); err != nil {
+		return err
+	}
+
+	if f.callback != nil {
+		f.callback.emitLog("✅ ESP32 reset released; application startup requested")
+	}
+
+	return nil
+}
+
+func (f *ESP32Flasher) normalBootReset(sleep func(time.Duration)) error {
+	// Start and finish with GPIO0 and EN released. The initial neutral state
+	// prevents a leftover bootloader-entry signal from affecting the reset.
 	if err := f.port.SetDTR(false); err != nil { // GPIO0 = HIGH (normal mode)
 		return fmt.Errorf("release boot pin: %w", err)
 	}
+	if err := f.port.SetRTS(false); err != nil { // EN = HIGH (neutral)
+		return fmt.Errorf("release reset before reboot: %w", err)
+	}
+	sleep(50 * time.Millisecond)
 	if err := f.port.SetRTS(true); err != nil { // EN = LOW (reset)
 		return fmt.Errorf("assert reset: %w", err)
 	}
-	time.Sleep(100 * time.Millisecond)
+	sleep(SERIAL_FLASHER_RESET_HOLD_TIME_MS * time.Millisecond)
 	if err := f.port.SetRTS(false); err != nil { // EN = HIGH (release reset)
 		return fmt.Errorf("release reset: %w", err)
 	}
 
-	if f.callback != nil {
-		f.callback.emitLog("✅ ESP32 rebooted")
+	// Let the ROM sample GPIO0 and begin booting before the serial port closes.
+	sleep(500 * time.Millisecond)
+	if err := f.port.SetDTR(false); err != nil {
+		return fmt.Errorf("keep boot pin released: %w", err)
+	}
+	if err := f.port.SetRTS(false); err != nil {
+		return fmt.Errorf("keep reset released: %w", err)
 	}
 
 	return nil

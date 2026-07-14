@@ -1,11 +1,77 @@
 package esp32
 
 import (
+	"encoding/binary"
 	"errors"
 	"slices"
 	"testing"
 	"time"
 )
+
+func TestFlashEndLeavesROMRunningUntilHardwareReset(t *testing.T) {
+	t.Context()
+	response := slipEncode([]byte{0x01, ESP_FLASH_END, 0, 0, 0, 0, 0, 0, 0, 0})
+	port := &fakeSerialPort{readData: response}
+	flasher := &ESP32Flasher{port: port}
+
+	if err := flasher.flashEnd(); err != nil {
+		t.Fatalf("flashEnd() error = %v", err)
+	}
+	if len(port.writes) != 1 {
+		t.Fatalf("writes = %d, want 1", len(port.writes))
+	}
+	packet, err := slipDecode(port.writes[0])
+	if err != nil {
+		t.Fatalf("decode FLASH_END packet: %v", err)
+	}
+	if got := binary.LittleEndian.Uint32(packet[8:12]); got != 1 {
+		t.Fatalf("FLASH_END stay-in-loader flag = %d, want 1", got)
+	}
+}
+
+func TestRebootTargetUsesOneStableHardReset(t *testing.T) {
+	t.Context()
+	port := &fakeSerialPort{}
+	flasher := &ESP32Flasher{port: port}
+
+	if err := flasher.rebootTarget(func(delay time.Duration) {
+		port.actions = append(port.actions, "WAIT="+delay.String())
+	}); err != nil {
+		t.Fatalf("rebootTarget() error = %v", err)
+	}
+	want := []string{
+		"DTR=false",
+		"RTS=false",
+		"WAIT=50ms",
+		"RTS=true",
+		"WAIT=100ms",
+		"RTS=false",
+		"WAIT=500ms",
+		"DTR=false",
+		"RTS=false",
+	}
+	if !slices.Equal(port.actions, want) {
+		t.Fatalf("control line sequence = %v, want %v", port.actions, want)
+	}
+	if wantBaudRates := []int{115200}; !slices.Equal(port.baudRates, wantBaudRates) {
+		t.Fatalf("baud rates = %v, want %v", port.baudRates, wantBaudRates)
+	}
+}
+
+func TestRebootTargetStopsWhenResetCannotBeAsserted(t *testing.T) {
+	t.Context()
+	port := &fakeSerialPort{failAction: "RTS=true"}
+	flasher := &ESP32Flasher{port: port}
+
+	err := flasher.rebootTarget(func(time.Duration) {})
+	if !errors.Is(err, errControlLine) {
+		t.Fatalf("rebootTarget() error = %v, want %v", err, errControlLine)
+	}
+	want := []string{"DTR=false", "RTS=false", "RTS=true"}
+	if !slices.Equal(port.actions, want) {
+		t.Fatalf("actions after failure = %v, want %v", port.actions, want)
+	}
+}
 
 func TestClassicResetUsesEspressifControlLineSequence(t *testing.T) {
 	t.Context()

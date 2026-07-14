@@ -28,7 +28,12 @@ let isMonitoring = false;
 let logUpdateTimeout = null; // Batches log rendering updates.
 let autoScrollEnabled = true; // Auto-scroll is enabled by default.
 let logLines = []; // In-memory terminal line buffer.
-const MAX_LOG_LINES = 1000;
+let logCharacterCount = 0;
+let lastProgressLog = null;
+const LOG_RENDER_INTERVAL_MS = 50;
+const MAX_LOG_LINES = 500;
+const MAX_LOG_CHARACTERS = 160_000;
+const MAX_LOG_LINE_CHARACTERS = 2_048;
 
 // Append a timestamped message to the log.
 function log(msg) {
@@ -38,21 +43,58 @@ function log(msg) {
 
 // Append one line to the terminal efficiently.
 function addLogLine(line) {
-  logLines.push(line);
+  appendLogLines([line]);
+}
 
-  // Keep a bounded terminal-style scrollback buffer.
-  if (logLines.length > MAX_LOG_LINES) {
-    logLines = logLines.slice(-MAX_LOG_LINES);
+function appendLogLines(lines) {
+  for (const value of lines) {
+    let line = String(value).trim();
+    if (!line) {
+      continue;
+    }
+    if (line.length > MAX_LOG_LINE_CHARACTERS) {
+      line = `${line.slice(0, MAX_LOG_LINE_CHARACTERS)} … [truncated]`;
+    }
+    logLines.push(line);
+    logCharacterCount += line.length;
   }
 
-  // Render immediately.
+  while (logLines.length > MAX_LOG_LINES || logCharacterCount > MAX_LOG_CHARACTERS) {
+    const removed = logLines.shift();
+    if (removed === undefined) {
+      break;
+    }
+    logCharacterCount -= removed.length;
+  }
+
+  scheduleLogRender();
+}
+
+function scheduleLogRender() {
+  if (logUpdateTimeout !== null) {
+    return;
+  }
+  logUpdateTimeout = setTimeout(renderLog, LOG_RENDER_INTERVAL_MS);
+}
+
+function renderLog() {
+  if (logUpdateTimeout !== null) {
+    clearTimeout(logUpdateTimeout);
+    logUpdateTimeout = null;
+  }
+
   logArea.textContent = logLines.join("\n");
   updateLogCounter();
 
-  // Follow the newest output when auto-scroll is enabled.
   if (autoScrollEnabled) {
     logArea.scrollTop = logArea.scrollHeight;
   }
+}
+
+function clearLog() {
+  logLines = [];
+  logCharacterCount = 0;
+  renderLog();
 }
 
 function updateLogCounter() {
@@ -70,7 +112,8 @@ function setSystemStatus(text, busy = false) {
 function updateProgress(progress, message) {
   progressBar.style.width = `${progress}%`;
   progressText.textContent = `${progress}%`;
-  if (message) {
+  if (message && progress !== lastProgressLog) {
+    lastProgressLog = progress;
     log(message);
   }
 }
@@ -81,6 +124,7 @@ function showProgress(show) {
   if (!show) {
     progressBar.style.width = "0%";
     progressText.textContent = "0%";
+    lastProgressLog = null;
   }
 }
 
@@ -95,26 +139,16 @@ EventsOn("flash-log", (message) => {
 
 // Subscribe to serial monitor events.
 EventsOn("monitor-data", (data) => {
-  // Data already arrives as complete lines.
-  if (data.trim()) {
-    const timestamp = new Date().toLocaleTimeString();
-    const logLine = `[${timestamp}] ${data.trim()}`;
-
-    // Append the line and enforce the scrollback limit.
-    logLines.push(logLine);
-    if (logLines.length > MAX_LOG_LINES) {
-      logLines = logLines.slice(-MAX_LOG_LINES);
-    }
-
-    // Render without batching for responsive serial output.
-    logArea.textContent = logLines.join("\n");
-    updateLogCounter();
-
-    // Follow new output when enabled.
-    if (autoScrollEnabled) {
-      logArea.scrollTop = logArea.scrollHeight;
-    }
+  if (!isMonitoring) {
+    return;
   }
+  const timestamp = new Date().toLocaleTimeString();
+  const lines = String(data)
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => `[${timestamp}] ${line}`);
+  appendLogLines(lines);
 });
 
 EventsOn("monitor-error", (error) => {
@@ -180,9 +214,7 @@ btnFlash.addEventListener("click", async () => {
   setSystemStatus("Flashing", true);
 
   // Clear the log and reveal progress.
-  logLines = [];
-  logArea.textContent = "";
-  updateLogCounter();
+  clearLog();
   showProgress(true);
 
   log(`🚀 Starting flash ${file} → ${port}`);
@@ -225,14 +257,13 @@ btnMonitor.addEventListener("click", async () => {
 
   try {
     // Clear old output before monitoring starts.
-    logLines = [];
-    logArea.textContent = "";
-    updateLogCounter();
+    clearLog();
 
-    await MonitorPort(port, baud);
     startMonitoring();
+    await MonitorPort(port, baud);
     log(`🔍 Monitoring ${port} at ${baud} baud`);
   } catch (e) {
+    stopMonitoring();
     log("❌ Could not start monitoring: " + e);
     alert("Could not start monitoring: " + e);
   }
@@ -240,9 +271,9 @@ btnMonitor.addEventListener("click", async () => {
 
 // Stop-monitor button.
 btnStopMonitor.addEventListener("click", async () => {
+  stopMonitoring();
   try {
     await StopMonitor();
-    stopMonitoring();
   } catch (e) {
     log("❌ Could not stop monitoring: " + e);
   }
@@ -268,18 +299,12 @@ function stopMonitoring() {
   baudSelect.disabled = false;
   setSystemStatus("System ready");
 
-  // Cancel any pending log render.
-  if (logUpdateTimeout) {
-    clearTimeout(logUpdateTimeout);
-    logUpdateTimeout = null;
-  }
+  renderLog();
 }
 
 // Clear-log button.
 btnClearLog.addEventListener("click", () => {
-  logLines = [];
-  logArea.textContent = "";
-  updateLogCounter();
+  clearLog();
   log("🗑️ Log cleared");
 });
 
