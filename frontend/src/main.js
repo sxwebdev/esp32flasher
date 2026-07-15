@@ -206,11 +206,10 @@ btnUpdate.addEventListener("click", async () => {
     return;
   }
   if (!availableUpdate.canInstall) {
-    alert("Automatic updates work from the installed application. Install the current release first, then try again.");
-    return;
-  }
-  const notes = availableUpdate.notes ? `\n\n${availableUpdate.notes.slice(0, 600)}` : "";
-  if (!confirm(`Install ${availableUpdate.version} now? The application will restart automatically.${notes}`)) {
+    btnUpdate.querySelector("span:last-child").textContent = "Automatic update unavailable";
+    btnUpdate.title = "The application must be installed in a writable location";
+    setSystemStatus("Update unavailable");
+    log("Automatic updates require the installed application in a writable location.");
     return;
   }
 
@@ -222,13 +221,14 @@ btnUpdate.addEventListener("click", async () => {
   try {
     await InstallUpdate();
   } catch (error) {
+    const message = String(error);
     btnUpdate.disabled = false;
     btnFlash.disabled = false;
     btnMonitor.disabled = false;
-    btnUpdate.querySelector("span:last-child").textContent = `Update ${availableUpdate.version}`;
-    setSystemStatus("System ready");
-    log(`Update failed: ${error}`);
-    alert(`Could not install the update: ${error}`);
+    btnUpdate.querySelector("span:last-child").textContent = "Update failed — retry";
+    btnUpdate.title = message;
+    setSystemStatus("Update failed");
+    log(`Update failed: ${message}`);
   }
 });
 
