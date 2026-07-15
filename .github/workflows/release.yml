@@ -52,6 +52,20 @@ jobs:
         shell: bash
         run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.13.0
 
+      - name: Ensure NSIS is installed
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $makensis = Get-Command makensis.exe -ErrorAction SilentlyContinue
+          if (-not $makensis) {
+            choco install nsis --yes --no-progress
+            $makensis = Get-Command makensis.exe -ErrorAction SilentlyContinue
+          }
+          if (-not $makensis) {
+            throw "NSIS installation completed, but makensis.exe is not available on PATH"
+          }
+          & $makensis.Source -VERSION
+
       - name: Set release version
         shell: bash
         env:
@@ -94,7 +108,12 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force -Path dist
           $arch = "${{ matrix.platform }}".Split("/")[-1]
-          Copy-Item "build/bin/espflasher-$arch-installer.exe" "dist/${{ matrix.artifact }}-installer.exe"
+          $source = "build/bin/espflasher-$arch-installer.exe"
+          if (-not (Test-Path -LiteralPath $source -PathType Leaf)) {
+            Get-ChildItem -Path build/bin -Force | Format-Table -AutoSize
+            throw "Wails did not create the expected NSIS installer: $source"
+          }
+          Copy-Item -LiteralPath $source "dist/${{ matrix.artifact }}-installer.exe"
 
       - name: Upload release artifact
         uses: actions/upload-artifact@v7

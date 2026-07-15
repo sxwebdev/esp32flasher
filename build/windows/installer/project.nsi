@@ -30,8 +30,6 @@ Unicode true
 ####
 ## !define REQUEST_EXECUTION_LEVEL "admin"            # Default "admin"  see also https://nsis.sourceforge.io/Docs/Chapter4.html
 ####
-## Keep this installation per-user so a silent in-app update needs no UAC prompt.
-!define REQUEST_EXECUTION_LEVEL "user"
 ## Include the wails tools
 ####
 !include "wails_tools.nsh"
