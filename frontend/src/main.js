@@ -4,6 +4,8 @@ import {
   ChooseFile,
   MonitorPort,
   StopMonitor,
+  CheckForUpdate,
+  InstallUpdate,
 } from "../wailsjs/go/main/App.js";
 import { EventsOn } from "../wailsjs/runtime/runtime.js";
 
@@ -23,6 +25,7 @@ const progressBar = document.getElementById("progressBar");
 const progressText = document.getElementById("progressText");
 const systemStatus = document.getElementById("systemStatus");
 const logCounter = document.getElementById("logCounter");
+const btnUpdate = document.getElementById("btnUpdate");
 
 let isMonitoring = false;
 let logUpdateTimeout = null; // Batches log rendering updates.
@@ -30,6 +33,8 @@ let autoScrollEnabled = true; // Auto-scroll is enabled by default.
 let logLines = []; // In-memory terminal line buffer.
 let logCharacterCount = 0;
 let lastProgressLog = null;
+let availableUpdate = null;
+let isFlashing = false;
 const LOG_RENDER_INTERVAL_MS = 50;
 const MAX_LOG_LINES = 500;
 const MAX_LOG_CHARACTERS = 160_000;
@@ -160,6 +165,61 @@ EventsOn("monitor-stop", () => {
   stopMonitoring();
 });
 
+// This check is deliberately non-blocking: a failed network request must never
+// get in the way of flashing a device.
+async function checkForUpdate() {
+  try {
+    const update = await CheckForUpdate();
+    if (!update?.available) {
+      return;
+    }
+    availableUpdate = update;
+    btnUpdate.hidden = false;
+    btnUpdate.querySelector("span:last-child").textContent = `Update ${update.version}`;
+    if (!update.canInstall) {
+      btnUpdate.title = "Automatic updates require the installed application";
+      btnUpdate.setAttribute("aria-label", "Update available; install the application to update automatically");
+    }
+  } catch (error) {
+    log(`Update check unavailable: ${error}`);
+  }
+}
+
+btnUpdate.addEventListener("click", async () => {
+  if (!availableUpdate) {
+    return;
+  }
+  if (isMonitoring || isFlashing) {
+    alert("Stop monitoring or wait for flashing to finish before updating.");
+    return;
+  }
+  if (!availableUpdate.canInstall) {
+    alert("Automatic updates work from the installed application. Install the current release first, then try again.");
+    return;
+  }
+  const notes = availableUpdate.notes ? `\n\n${availableUpdate.notes.slice(0, 600)}` : "";
+  if (!confirm(`Install ${availableUpdate.version} now? The application will restart automatically.${notes}`)) {
+    return;
+  }
+
+  btnUpdate.disabled = true;
+  btnFlash.disabled = true;
+  btnMonitor.disabled = true;
+  btnUpdate.querySelector("span:last-child").textContent = "Downloading update…";
+  setSystemStatus("Updating", true);
+  try {
+    await InstallUpdate();
+  } catch (error) {
+    btnUpdate.disabled = false;
+    btnFlash.disabled = false;
+    btnMonitor.disabled = false;
+    btnUpdate.querySelector("span:last-child").textContent = `Update ${availableUpdate.version}`;
+    setSystemStatus("System ready");
+    log(`Update failed: ${error}`);
+    alert(`Could not install the update: ${error}`);
+  }
+});
+
 // Discover and display serial ports.
 async function refreshPorts() {
   portSelect.innerHTML = "";
@@ -205,6 +265,7 @@ btnFlash.addEventListener("click", async () => {
   }
 
   // Lock conflicting controls during flashing.
+  isFlashing = true;
   btnFlash.disabled = true;
   btnChoose.disabled = true;
   btnRefresh.disabled = true;
@@ -242,6 +303,7 @@ btnFlash.addEventListener("click", async () => {
       portSelect.disabled = false;
       baudSelect.disabled = false;
       setSystemStatus("System ready");
+      isFlashing = false;
     }, 1000); // Leave the final state visible briefly.
   }
 });
@@ -287,6 +349,7 @@ function startMonitoring() {
   btnFlash.disabled = true;
   portSelect.disabled = true;
   baudSelect.disabled = true;
+  btnUpdate.disabled = true;
   setSystemStatus("Monitoring", true);
 }
 
@@ -297,6 +360,7 @@ function stopMonitoring() {
   btnFlash.disabled = false;
   portSelect.disabled = false;
   baudSelect.disabled = false;
+  btnUpdate.disabled = false;
   setSystemStatus("System ready");
 
   renderLog();
@@ -353,3 +417,4 @@ if (autoScrollEnabled) {
 
 updateLogCounter();
 refreshPorts();
+checkForUpdate();

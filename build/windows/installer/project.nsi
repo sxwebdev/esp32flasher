@@ -30,6 +30,8 @@ Unicode true
 ####
 ## !define REQUEST_EXECUTION_LEVEL "admin"            # Default "admin"  see also https://nsis.sourceforge.io/Docs/Chapter4.html
 ####
+## Keep this installation per-user so a silent in-app update needs no UAC prompt.
+!define REQUEST_EXECUTION_LEVEL "user"
 ## Include the wails tools
 ####
 !include "wails_tools.nsh"
@@ -72,7 +74,7 @@ ManifestDPIAware true
 
 Name "${INFO_PRODUCTNAME}"
 OutFile "..\..\bin\${INFO_PROJECTNAME}-${ARCH}-installer.exe" # Name of the installer's file.
-InstallDir "$PROGRAMFILES64\${INFO_COMPANYNAME}\${INFO_PRODUCTNAME}" # Default installing folder ($PROGRAMFILES is Program Files folder).
+InstallDir "$LOCALAPPDATA\Programs\${INFO_COMPANYNAME}\${INFO_PRODUCTNAME}"
 ShowInstDetails show # This will always show the installation details.
 
 Function .onInit

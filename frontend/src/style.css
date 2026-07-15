@@ -132,11 +132,52 @@ select {
   letter-spacing: 0.09em;
 }
 
+.update-button {
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  padding: 0 9px;
+  color: #b9e6c6;
+  border: 1px solid #31533e;
+  border-radius: 5px;
+  background: #142019;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.update-button:hover {
+  color: #e2f8e8;
+  border-color: #4c835e;
+  background: #192b20;
+}
+
+.update-button:disabled {
+  cursor: wait;
+  opacity: 0.68;
+}
+
+.update-button[hidden] {
+  display: none;
+}
+
+.update-indicator {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--success);
+  box-shadow: 0 0 7px rgba(104, 211, 145, 0.65);
+}
+
 .system-status {
   display: flex;
   align-items: center;
   gap: 7px;
-  margin-left: auto;
+  margin-left: 0;
   color: #a6afb4;
   font-family: var(--font-mono);
   font-size: 10px;
@@ -714,7 +755,8 @@ h2 {
 
   .system-status span:last-child,
   .brand-copy p,
-  .version-tag {
+  .version-tag,
+  .update-button span:last-child {
     display: none;
   }
 
