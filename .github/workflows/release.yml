@@ -52,11 +52,32 @@ jobs:
         shell: bash
         run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.13.0
 
+      - name: Set release version
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          node --input-type=module -e '
+            import fs from "node:fs";
+            const file = "wails.json";
+            const config = JSON.parse(fs.readFileSync(file, "utf8"));
+            config.info.productVersion = process.env.RELEASE_TAG.replace(/^v/, "");
+            fs.writeFileSync(file, `${JSON.stringify(config, null, 2)}\n`);
+          '
+
       - name: Build application
         shell: bash
         env:
           CGO_LDFLAGS: ${{ startsWith(matrix.platform, 'darwin/') && '-framework UniformTypeIdentifiers' || '' }}
-        run: wails build -clean -trimpath -platform "${{ matrix.platform }}"
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          VERSION="${RELEASE_TAG#v}"
+          EXTRA_FLAGS=""
+          if [[ "${{ matrix.platform }}" == windows/* ]]; then
+            EXTRA_FLAGS="-nsis -installscope user"
+          fi
+          wails build -clean -trimpath -platform "${{ matrix.platform }}" \
+            -ldflags "-X main.appVersion=${VERSION}" ${EXTRA_FLAGS}
 
       - name: Package macOS application
         if: runner.os == 'macOS'
@@ -72,7 +93,8 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path dist
-          Copy-Item build/bin/espflasher.exe "dist/${{ matrix.artifact }}.exe"
+          $arch = "${{ matrix.platform }}".Split("/")[-1]
+          Copy-Item "build/bin/espflasher-$arch-installer.exe" "dist/${{ matrix.artifact }}-installer.exe"
 
       - name: Upload release artifact
         uses: actions/upload-artifact@v7

@@ -2,6 +2,12 @@
   "$schema": "https://wails.io/schemas/config.v2.json",
   "name": "espflasher",
   "outputfilename": "espflasher",
+  "info": {
+    "companyName": "sxwebdev",
+    "productName": "ESP32 Flasher",
+    "productVersion": "0.0.0",
+    "comments": "ESP32 firmware flashing utility"
+  },
   "frontend:install": "npm install",
   "frontend:build": "npm run build",
   "frontend:dev:watcher": "npm run dev",

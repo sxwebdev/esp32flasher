@@ -23,6 +23,8 @@ type App struct {
 	progressMu   sync.Mutex
 	progressSet  bool
 	lastProgress int
+
+	updateMu sync.Mutex
 }
 
 // NewApp creates a new App application struct

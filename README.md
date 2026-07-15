@@ -79,11 +79,24 @@ See [Flasher knowledge base](docs/flasher-knowledge-base.md) for architecture, p
 
 ## Releases
 
-Push a tag to build macOS and Windows binaries for AMD64 and ARM64 and attach them to a GitHub release:
+Push a semantic-version tag to build macOS ZIPs and per-user Windows installers
+for AMD64 and ARM64 and attach them to a GitHub release:
 
 ```bash
 make release TAG=v1.2.3
 ```
+
+At startup, installed builds check the latest stable GitHub release in the
+background. If a compatible release is available, the **Update** button
+downloads it, installs it after the current process exits, and restarts the
+application. On Windows, install the app through the released NSIS installer;
+portable executables are intentionally not overwritten. On macOS, run the
+application bundle from a user-writable location (for example `~/Applications`
+or a user-owned `/Applications` bundle) so it can be atomically replaced.
+
+For public macOS distribution, add Developer ID signing and notarization to the
+release workflow. The updater preserves the bundle archive with `ditto` and
+refuses to replace a signed running app with an invalidly signed update.
 
 ## License
 
