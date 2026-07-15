@@ -4,6 +4,8 @@ package esp32
 
 import "golang.org/x/sys/unix"
 
+const platformRequiresDTRRefreshAfterRTS = false
+
 type unixModemControl struct {
 	fd int
 }

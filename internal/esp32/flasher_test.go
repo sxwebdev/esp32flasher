@@ -73,6 +73,36 @@ func TestRebootTargetStopsWhenResetCannotBeAsserted(t *testing.T) {
 	}
 }
 
+func TestRebootTargetRefreshesDTRAfterRTSOnWindows(t *testing.T) {
+	t.Context()
+	port := &fakeSerialPort{}
+	flasher := &ESP32Flasher{port: port, refreshDTRAfterRTS: true}
+
+	if err := flasher.rebootTarget(func(delay time.Duration) {
+		port.actions = append(port.actions, "WAIT="+delay.String())
+	}); err != nil {
+		t.Fatalf("rebootTarget() error = %v", err)
+	}
+	want := []string{
+		"DTR=false",
+		"RTS=false",
+		"DTR=false",
+		"WAIT=50ms",
+		"RTS=true",
+		"DTR=false",
+		"WAIT=100ms",
+		"RTS=false",
+		"DTR=false",
+		"WAIT=4s",
+		"DTR=false",
+		"RTS=false",
+		"DTR=false",
+	}
+	if !slices.Equal(port.actions, want) {
+		t.Fatalf("control line sequence = %v, want %v", port.actions, want)
+	}
+}
+
 func TestTightResetUsesCP2102CompatibleStateTransitions(t *testing.T) {
 	t.Context()
 	tests := []struct {
@@ -184,6 +214,77 @@ func TestClassicResetStopsOnControlLineError(t *testing.T) {
 	want := []string{"DTR=false", "RTS=true"}
 	if !slices.Equal(port.actions, want) {
 		t.Fatalf("actions after failure = %v, want %v", port.actions, want)
+	}
+}
+
+func TestClassicResetRefreshesDTRAfterRTSOnWindows(t *testing.T) {
+	t.Context()
+	port := &fakeSerialPort{}
+	flasher := &ESP32Flasher{port: port, refreshDTRAfterRTS: true}
+
+	err := flasher.classicReset(func(delay time.Duration) {
+		port.actions = append(port.actions, "WAIT="+delay.String())
+	})
+	if err != nil {
+		t.Fatalf("classicReset() error = %v", err)
+	}
+
+	want := []string{
+		"DTR=false",
+		"RTS=true",
+		"DTR=false",
+		"WAIT=100ms",
+		"DTR=true",
+		"RTS=false",
+		"DTR=true",
+		"WAIT=50ms",
+		"DTR=false",
+		"WAIT=50ms",
+	}
+	if !slices.Equal(port.actions, want) {
+		t.Fatalf("control line sequence = %v, want %v", port.actions, want)
+	}
+}
+
+func TestSetRTSReportsWindowsDTRRefreshError(t *testing.T) {
+	t.Context()
+	port := &fakeSerialPort{failAction: "DTR=false"}
+	flasher := &ESP32Flasher{port: port, refreshDTRAfterRTS: true}
+
+	err := flasher.setRTS(true, false)
+	if !errors.Is(err, errControlLine) {
+		t.Fatalf("setRTS() error = %v, want %v", err, errControlLine)
+	}
+	want := []string{"RTS=true", "DTR=false"}
+	if !slices.Equal(port.actions, want) {
+		t.Fatalf("control line sequence = %v, want %v", port.actions, want)
+	}
+}
+
+func TestClassicResetSupportsExtendedBootDelay(t *testing.T) {
+	t.Context()
+	port := &fakeSerialPort{}
+	flasher := &ESP32Flasher{port: port}
+
+	err := flasher.classicResetWithDelay(func(delay time.Duration) {
+		port.actions = append(port.actions, "WAIT="+delay.String())
+	}, 550*time.Millisecond)
+	if err != nil {
+		t.Fatalf("classicResetWithDelay() error = %v", err)
+	}
+
+	want := []string{
+		"DTR=false",
+		"RTS=true",
+		"WAIT=100ms",
+		"DTR=true",
+		"RTS=false",
+		"WAIT=550ms",
+		"DTR=false",
+		"WAIT=50ms",
+	}
+	if !slices.Equal(port.actions, want) {
+		t.Fatalf("control line sequence = %v, want %v", port.actions, want)
 	}
 }
 

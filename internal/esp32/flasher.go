@@ -37,6 +37,7 @@ func New(portName string, callback *Callbacks) (*ESP32Flasher, error) {
 	flasher := &ESP32Flasher{
 		port:               port,
 		modemControl:       control,
+		refreshDTRAfterRTS: platformRequiresDTRRefreshAfterRTS,
 		callback:           callback,
 		chipType:           CHIP_UNKNOWN,
 		blockSize:          ESP_FLASH_WRITE_SIZE,
@@ -74,6 +75,7 @@ func NewManual(portName string, callback *Callbacks) (*ESP32Flasher, error) {
 
 	flasher := &ESP32Flasher{
 		port:               port,
+		refreshDTRAfterRTS: platformRequiresDTRRefreshAfterRTS,
 		callback:           callback,
 		chipType:           CHIP_UNKNOWN,
 		blockSize:          ESP_FLASH_WRITE_SIZE,
@@ -125,16 +127,23 @@ func (f *ESP32Flasher) enterBootloader() error {
 		return nil
 	}
 
-	resetStrategies := []struct {
+	type resetStrategy struct {
 		name     string
 		attempts int
 		reset    func() error
-	}{
-		{name: "tight DTR/RTS", attempts: 1, reset: f.tightReset},
-		{name: "slow tight DTR/RTS", attempts: 1, reset: f.slowTightReset},
-		{name: "DevKit auto-reset", attempts: 1, reset: f.hardReset},
-		{name: "direct DTR→GPIO0, RTS→EN", attempts: 3, reset: f.directReset},
 	}
+	resetStrategies := make([]resetStrategy, 0, 5)
+	if f.modemControl != nil {
+		resetStrategies = append(resetStrategies,
+			resetStrategy{name: "tight DTR/RTS", attempts: 1, reset: f.tightReset},
+			resetStrategy{name: "slow tight DTR/RTS", attempts: 1, reset: f.slowTightReset},
+		)
+	}
+	resetStrategies = append(resetStrategies,
+		resetStrategy{name: "DevKit auto-reset", attempts: 1, reset: f.hardReset},
+		resetStrategy{name: "slow DevKit auto-reset", attempts: 1, reset: f.slowHardReset},
+		resetStrategy{name: "direct DTR→GPIO0, RTS→EN", attempts: 3, reset: f.directReset},
+	)
 
 	for _, strategy := range resetStrategies {
 		for attempt := 1; attempt <= strategy.attempts; attempt++ {
@@ -225,7 +234,21 @@ func (f *ESP32Flasher) setDTRAndRTS(dtr, rts bool) error {
 	if err := f.port.SetDTR(dtr); err != nil {
 		return err
 	}
-	return f.port.SetRTS(rts)
+	return f.setRTS(rts, dtr)
+}
+
+// setRTS applies the Windows usbser.sys workaround used by esptool. Some USB
+// serial drivers only transmit a changed RTS value when DTR is applied again.
+func (f *ESP32Flasher) setRTS(rts, currentDTR bool) error {
+	if err := f.port.SetRTS(rts); err != nil {
+		return err
+	}
+	if f.refreshDTRAfterRTS {
+		if err := f.port.SetDTR(currentDTR); err != nil {
+			return fmt.Errorf("refresh DTR after RTS change: %w", err)
+		}
+	}
+	return nil
 }
 
 // hardReset performs the standard Espressif DevKit reset sequence.
@@ -233,26 +256,37 @@ func (f *ESP32Flasher) hardReset() error {
 	if f.callback != nil {
 		f.callback.emitLog("🔄 Standard Espressif DTR/RTS sequence")
 	}
-	return f.classicReset(time.Sleep)
+	return f.classicResetWithDelay(time.Sleep, SERIAL_FLASHER_BOOT_HOLD_TIME_MS*time.Millisecond)
 }
 
 func (f *ESP32Flasher) classicReset(sleep func(time.Duration)) error {
+	return f.classicResetWithDelay(sleep, SERIAL_FLASHER_BOOT_HOLD_TIME_MS*time.Millisecond)
+}
+
+func (f *ESP32Flasher) slowHardReset() error {
+	if f.callback != nil {
+		f.callback.emitLog("🔄 Slow Espressif DTR/RTS sequence")
+	}
+	return f.classicResetWithDelay(time.Sleep, (SERIAL_FLASHER_BOOT_HOLD_TIME_MS+500)*time.Millisecond)
+}
+
+func (f *ESP32Flasher) classicResetWithDelay(sleep func(time.Duration), bootDelay time.Duration) error {
 	// DTR and RTS are active-low. On the standard DevKit transistor circuit,
 	// asserting both lines intentionally does not hold the chip in reset.
 	if err := f.port.SetDTR(false); err != nil { // GPIO0 = HIGH
 		return fmt.Errorf("release DTR: %w", err)
 	}
-	if err := f.port.SetRTS(true); err != nil { // EN = LOW
+	if err := f.setRTS(true, false); err != nil { // EN = LOW
 		return fmt.Errorf("assert RTS: %w", err)
 	}
 	sleep(SERIAL_FLASHER_RESET_HOLD_TIME_MS * time.Millisecond)
 	if err := f.port.SetDTR(true); err != nil { // GPIO0 = LOW
 		return fmt.Errorf("assert DTR: %w", err)
 	}
-	if err := f.port.SetRTS(false); err != nil { // EN = HIGH
+	if err := f.setRTS(false, true); err != nil { // EN = HIGH
 		return fmt.Errorf("release RTS: %w", err)
 	}
-	sleep(SERIAL_FLASHER_BOOT_HOLD_TIME_MS * time.Millisecond)
+	sleep(bootDelay)
 	if err := f.port.SetDTR(false); err != nil { // GPIO0 = HIGH
 		return fmt.Errorf("release DTR after reset: %w", err)
 	}
@@ -275,7 +309,7 @@ func (f *ESP32Flasher) directResetWithSleep(sleep func(time.Duration)) error {
 	if err := f.port.SetDTR(false); err != nil { // GPIO0 = HIGH
 		return fmt.Errorf("release DTR: %w", err)
 	}
-	if err := f.port.SetRTS(false); err != nil { // EN = HIGH
+	if err := f.setRTS(false, false); err != nil { // EN = HIGH
 		return fmt.Errorf("release RTS: %w", err)
 	}
 	sleep(50 * time.Millisecond)
@@ -284,11 +318,11 @@ func (f *ESP32Flasher) directResetWithSleep(sleep func(time.Duration)) error {
 		return fmt.Errorf("assert DTR: %w", err)
 	}
 	sleep(50 * time.Millisecond)
-	if err := f.port.SetRTS(true); err != nil { // EN = LOW
+	if err := f.setRTS(true, true); err != nil { // EN = LOW
 		return fmt.Errorf("assert RTS: %w", err)
 	}
 	sleep(SERIAL_FLASHER_RESET_HOLD_TIME_MS * time.Millisecond)
-	if err := f.port.SetRTS(false); err != nil { // EN = HIGH
+	if err := f.setRTS(false, true); err != nil { // EN = HIGH
 		return fmt.Errorf("release RTS: %w", err)
 	}
 	sleep(SERIAL_FLASHER_BOOT_HOLD_TIME_MS * time.Millisecond)
@@ -798,15 +832,15 @@ func (f *ESP32Flasher) normalBootReset(sleep func(time.Duration)) error {
 	if err := f.port.SetDTR(false); err != nil { // GPIO0 = HIGH (normal mode)
 		return fmt.Errorf("release boot pin: %w", err)
 	}
-	if err := f.port.SetRTS(false); err != nil { // EN = HIGH (neutral)
+	if err := f.setRTS(false, false); err != nil { // EN = HIGH (neutral)
 		return fmt.Errorf("release reset before reboot: %w", err)
 	}
 	sleep(50 * time.Millisecond)
-	if err := f.port.SetRTS(true); err != nil { // EN = LOW (reset)
+	if err := f.setRTS(true, false); err != nil { // EN = LOW (reset)
 		return fmt.Errorf("assert reset: %w", err)
 	}
 	sleep(SERIAL_FLASHER_RESET_HOLD_TIME_MS * time.Millisecond)
-	if err := f.port.SetRTS(false); err != nil { // EN = HIGH (release reset)
+	if err := f.setRTS(false, false); err != nil { // EN = HIGH (release reset)
 		return fmt.Errorf("release reset: %w", err)
 	}
 
@@ -818,7 +852,7 @@ func (f *ESP32Flasher) normalBootReset(sleep func(time.Duration)) error {
 	if err := f.port.SetDTR(false); err != nil {
 		return fmt.Errorf("keep boot pin released: %w", err)
 	}
-	if err := f.port.SetRTS(false); err != nil {
+	if err := f.setRTS(false, false); err != nil {
 		return fmt.Errorf("keep reset released: %w", err)
 	}
 
