@@ -102,6 +102,7 @@ func (c *Callbacks) emitLog(message string) {
 type ESP32Flasher struct {
 	port               serial.Port
 	modemControl       modemControl
+	refreshDTRAfterRTS bool
 	callback           *Callbacks
 	chipType           ChipType
 	blockSize          uint32
