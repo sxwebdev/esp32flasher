@@ -4,6 +4,7 @@ import {
   ChooseFile,
   MonitorPort,
   StopMonitor,
+  GetAppVersion,
   CheckForUpdate,
   InstallUpdate,
 } from "../wailsjs/go/main/App.js";
@@ -26,6 +27,7 @@ const progressText = document.getElementById("progressText");
 const systemStatus = document.getElementById("systemStatus");
 const logCounter = document.getElementById("logCounter");
 const btnUpdate = document.getElementById("btnUpdate");
+const appVersionTag = document.getElementById("appVersion");
 
 let isMonitoring = false;
 let logUpdateTimeout = null; // Batches log rendering updates.
@@ -182,6 +184,16 @@ async function checkForUpdate() {
     }
   } catch (error) {
     log(`Update check unavailable: ${error}`);
+  }
+}
+
+async function showAppVersion() {
+  try {
+    const version = await GetAppVersion();
+    appVersionTag.textContent = version.startsWith("v") ? version : `v${version}`;
+  } catch (error) {
+    appVersionTag.hidden = true;
+    log(`Could not read app version: ${error}`);
   }
 }
 
@@ -417,4 +429,5 @@ if (autoScrollEnabled) {
 
 updateLogCounter();
 refreshPorts();
+showAppVersion();
 checkForUpdate();

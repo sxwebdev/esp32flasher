@@ -29,6 +29,11 @@ var errUpdateDownloadNotHTTPS = errors.New("update download does not use HTTPS")
 // the default value and may check for updates, but cannot install one.
 var appVersion = "0.0.0-dev"
 
+// GetAppVersion returns the version embedded into the release build.
+func (a *App) GetAppVersion() string {
+	return appVersion
+}
+
 type UpdateInfo struct {
 	Available  bool   `json:"available"`
 	CanInstall bool   `json:"canInstall"`
