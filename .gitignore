@@ -6,3 +6,4 @@ frontend/dist
 frontend/wailsjs/
 espflasher
 testdata/
+.DS_Store
