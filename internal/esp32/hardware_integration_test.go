@@ -14,13 +14,13 @@ type hardwareTestReporter struct {
 	lastProgress int
 }
 
-func (r *hardwareTestReporter) emitProgress(progress int, message string) {
+func (r *hardwareTestReporter) emitProgress(progress int, message ProgressMessage) {
 	if progress == r.lastProgress {
 		return
 	}
 	r.lastProgress = progress
 	if progress%5 == 0 || progress >= 95 {
-		fmt.Printf("[%3d%%] %s\n", progress, message)
+		fmt.Printf("[%3d%%] %s\n", progress, message.Key)
 	}
 }
 

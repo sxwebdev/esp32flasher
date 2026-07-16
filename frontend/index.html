@@ -19,17 +19,17 @@
         <div class="brand-copy">
           <div class="brand-line">
             <h1>ESP32 FLASHER</h1>
-            <span id="appVersion" class="version-tag">VERSION</span>
+            <span id="appVersion" class="version-tag" data-i18n="brand.version">VERSION</span>
           </div>
-          <p>Firmware deployment console</p>
+          <p data-i18n="brand.subtitle">Firmware deployment console</p>
         </div>
         <button id="btnUpdate" class="update-button" type="button" hidden>
           <span class="update-indicator" aria-hidden="true"></span>
-          <span>Update available</span>
+          <span data-i18n="update.available">Update available</span>
         </button>
         <div class="system-status" id="systemStatus">
           <span class="status-led" aria-hidden="true"></span>
-          <span>System ready</span>
+          <span data-i18n="status.ready">System ready</span>
         </div>
       </header>
 
@@ -37,20 +37,22 @@
         <section class="panel setup-panel" aria-labelledby="setupTitle">
           <div class="panel-header">
             <div>
-              <span class="eyebrow">Configuration</span>
-              <h2 id="setupTitle">Device</h2>
+              <span class="eyebrow" data-i18n="setup.configuration">Configuration</span>
+              <h2 id="setupTitle" data-i18n="setup.device">Device</h2>
             </div>
             <span class="panel-index">01</span>
           </div>
 
           <div class="field-group">
-            <label class="label" for="portSelect">Serial port</label>
+            <label class="label" for="portSelect" data-i18n="setup.serialPort">Serial port</label>
             <div class="input-row port-row">
               <select id="portSelect" class="select"></select>
               <button
                 id="btnRefresh"
                 class="btn btn-icon"
                 type="button"
+                data-i18n-title="setup.refreshPorts"
+                data-i18n-aria-label="setup.refreshPorts"
                 title="Refresh port list"
                 aria-label="Refresh port list"
               >
@@ -60,11 +62,11 @@
                 </svg>
               </button>
             </div>
-            <div id="portDescription" class="field-hint">Select a detected serial port.</div>
+            <div id="portDescription" class="field-hint" data-i18n="setup.selectPortHint">Select a detected serial port.</div>
           </div>
 
           <div class="field-group">
-            <label class="label" for="baudSelect">Port speed</label>
+            <label class="label" for="baudSelect" data-i18n="setup.portSpeed">Port speed</label>
             <div class="select-with-unit">
               <select id="baudSelect" class="select">
                 <option value="9600">9 600</option>
@@ -72,14 +74,14 @@
                 <option value="460800">460 800</option>
                 <option value="921600">921 600</option>
               </select>
-              <span>BAUD</span>
+              <span data-i18n="setup.baud">BAUD</span>
             </div>
           </div>
 
           <div class="section-rule"></div>
 
           <div class="field-group firmware-group">
-            <label class="label" for="filePath">Firmware image</label>
+            <label class="label" for="filePath" data-i18n="setup.firmwareImage">Firmware image</label>
             <div class="file-control">
               <div class="file-path-wrap">
                 <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -91,6 +93,7 @@
                   id="filePath"
                   readonly
                   class="input file-input"
+                  data-i18n-placeholder="setup.noFile"
                   placeholder="No file selected"
                 />
               </div>
@@ -99,23 +102,23 @@
                   <path d="M3 7h6l2 2h10v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z" />
                   <path d="M3 7V5a2 2 0 0 1 2-2h4l2 2h6" />
                 </svg>
-                <span>Select .bin</span>
+                <span data-i18n="setup.selectBin">Select .bin</span>
               </button>
             </div>
-            <p class="field-hint">The write address is detected automatically</p>
+            <p class="field-hint" data-i18n="setup.writeAddressHint">The write address is detected automatically</p>
           </div>
 
           <button id="btnFlash" class="btn btn-primary" type="button">
             <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
               <path d="m13 2-9 12h8l-1 8 9-12h-8l1-8z" />
             </svg>
-            <span>Flash firmware</span>
-            <kbd>ENTER</kbd>
+            <span data-i18n="setup.flashFirmware">Flash firmware</span>
+            <kbd data-i18n="keyboard.enter">ENTER</kbd>
           </button>
 
           <div id="progressContainer" class="progress-container" hidden>
             <div class="progress-meta">
-              <span>Writing Flash</span>
+              <span data-i18n="progress.writingFlash">Writing Flash</span>
               <span id="progressText" class="progress-text">0%</span>
             </div>
             <div class="progress-bar">
@@ -129,8 +132,8 @@
             <div class="terminal-title">
               <span class="terminal-icon" aria-hidden="true">›_</span>
               <div>
-                <span class="eyebrow">Device output</span>
-                <h2 id="terminalTitle">Serial console</h2>
+                <span class="eyebrow" data-i18n="terminal.deviceOutput">Device output</span>
+                <h2 id="terminalTitle" data-i18n="terminal.serialConsole">Serial console</h2>
               </div>
             </div>
             <div class="log-controls">
@@ -138,30 +141,33 @@
                 <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
                   <path d="M8 5v14M16 5v14M4 9h4M16 9h4M4 15h4M16 15h4" />
                 </svg>
-                <span>Monitor</span>
+                <span data-i18n="terminal.monitor">Monitor</span>
               </button>
               <button id="btnStopMonitor" class="btn btn-tool btn-stop" type="button" hidden>
                 <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
                   <rect x="6" y="6" width="12" height="12" rx="1" />
                 </svg>
-                <span>Stop</span>
+                <span data-i18n="terminal.stop">Stop</span>
               </button>
               <button
                 id="btnAutoScroll"
                 class="btn btn-tool btn-toggle active"
                 type="button"
                 aria-pressed="true"
+                data-i18n-title="terminal.autoScrollTitle"
                 title="Automatic scrolling"
               >
                 <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
                   <path d="M12 4v14M7 13l5 5 5-5" />
                 </svg>
-                <span>Auto-scroll</span>
+                <span data-i18n="terminal.autoScroll">Auto-scroll</span>
               </button>
               <button
                 id="btnCopyLog"
                 class="btn btn-icon btn-ghost btn-copy"
                 type="button"
+                data-i18n-title="terminal.copyLog"
+                data-i18n-aria-label="terminal.copyLog"
                 title="Copy console output"
                 aria-label="Copy console output"
                 disabled
@@ -175,6 +181,8 @@
                 id="btnClearLog"
                 class="btn btn-icon btn-ghost"
                 type="button"
+                data-i18n-title="terminal.clearConsole"
+                data-i18n-aria-label="terminal.clearConsole"
                 title="Clear console"
                 aria-label="Clear console"
               >
@@ -193,7 +201,7 @@
             <pre id="log" class="log" aria-live="off"></pre>
           </div>
           <div class="terminal-footer">
-            <span><i class="footer-dot"></i> UTF-8 / BINARY GUARD</span>
+            <span><i class="footer-dot"></i> <span data-i18n="terminal.binaryGuard">UTF-8 / BINARY GUARD</span></span>
             <span id="logCounter">0 lines</span>
           </div>
         </section>

@@ -7,6 +7,7 @@ import (
 	"espflasher/internal/serialports"
 	"fmt"
 	"os"
+	"strings"
 	"sync"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
@@ -43,13 +44,20 @@ func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 }
 
-// ChooseFile opens the firmware file picker.
-func (a *App) ChooseFile() (string, error) {
+// ChooseFile opens the firmware file picker in the interface language.
+func (a *App) ChooseFile(language string) (string, error) {
+	title := "Select a firmware file"
+	displayName := "Firmware Files"
+	if strings.HasPrefix(strings.ToLower(language), "ru") {
+		title = "Выберите файл прошивки"
+		displayName = "Файлы прошивки"
+	}
+
 	filePath, err := runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{
-		Title: "Select a firmware file",
+		Title: title,
 		Filters: []runtime.FileFilter{
 			{
-				DisplayName: "Firmware Files",
+				DisplayName: displayName,
 				Pattern:     "*.bin",
 			},
 		},
@@ -59,7 +67,7 @@ func (a *App) ChooseFile() (string, error) {
 }
 
 // emitProgress sends flashing progress to the frontend.
-func (a *App) emitProgress(progress int, message string) {
+func (a *App) emitProgress(progress int, message esp32.ProgressMessage) {
 	a.progressMu.Lock()
 	if a.progressSet && progress == a.lastProgress {
 		a.progressMu.Unlock()
@@ -102,7 +110,7 @@ func (a *App) Flash(portName, filePath string) error {
 		return fmt.Errorf("file does not exist: %s", filePath)
 	}
 
-	a.emitProgress(0, "Starting flash...")
+	a.emitProgress(0, esp32.ProgressMessage{Key: "progress.starting"})
 	a.emitLog("🔄 Initializing...")
 
 	// Load the complete image into memory.
@@ -111,7 +119,7 @@ func (a *App) Flash(portName, filePath string) error {
 		return fmt.Errorf("failed to read file: %w", err)
 	}
 
-	a.emitProgress(10, "Firmware loaded")
+	a.emitProgress(10, esp32.ProgressMessage{Key: "progress.firmwareLoaded"})
 	a.emitLog(fmt.Sprintf("📄 Loaded firmware: %d bytes", len(data)))
 	image := firmware.Detect(filePath, data)
 	if image.Full {
@@ -120,7 +128,7 @@ func (a *App) Flash(portName, filePath string) error {
 		a.emitLog("📦 Application image detected: writing from address 0x10000")
 	}
 
-	a.emitProgress(20, "Connecting to ESP32...")
+	a.emitProgress(20, esp32.ProgressMessage{Key: "progress.connecting"})
 	a.emitLog("🔗 Connecting to ESP32...")
 
 	flasher, err := esp32.New(portName, a.flasherCallbacks())
@@ -133,7 +141,7 @@ func (a *App) Flash(portName, filePath string) error {
 
 	// Write the image while reporting progress.
 	if err := flasher.Flash(data, image.Offset); err != nil {
-		a.emitProgress(0, "Flash failed")
+		a.emitProgress(0, esp32.ProgressMessage{Key: "progress.failed"})
 		return fmt.Errorf("failed to flash: %w", err)
 	}
 
@@ -142,7 +150,7 @@ func (a *App) Flash(portName, filePath string) error {
 		return fmt.Errorf("failed to reboot ESP32 after flashing: %w", err)
 	}
 
-	a.emitProgress(100, "Flashing complete!")
+	a.emitProgress(100, esp32.ProgressMessage{Key: "progress.complete"})
 	a.emitLog("✅ Firmware flashed successfully!")
 	a.emitLog("💡 Flash has been restored; the ESP32 should now boot normally")
 

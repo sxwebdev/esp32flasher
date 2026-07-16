@@ -77,8 +77,15 @@ func (c ChipType) String() string {
 // Callbacks connects the low-level flasher to an application UI.
 // Nil functions are valid, so the flasher can also run headlessly.
 type Callbacks struct {
-	Progress func(progress int, message string)
+	Progress func(progress int, message ProgressMessage)
 	Log      func(message string)
+}
+
+// ProgressMessage describes UI progress without coupling the flasher to a
+// particular human language. The application renders Key with its own catalog.
+type ProgressMessage struct {
+	Key    string         `json:"key"`
+	Values map[string]any `json:"values,omitempty"`
 }
 
 type modemControl interface {
@@ -86,7 +93,7 @@ type modemControl interface {
 	Close() error
 }
 
-func (c *Callbacks) emitProgress(progress int, message string) {
+func (c *Callbacks) emitProgress(progress int, message ProgressMessage) {
 	if c != nil && c.Progress != nil {
 		c.Progress(progress, message)
 	}

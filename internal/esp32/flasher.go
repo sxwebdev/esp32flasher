@@ -587,7 +587,7 @@ func (f *ESP32Flasher) flashEnd() error {
 func (f *ESP32Flasher) Flash(data []byte, offset uint32) error {
 	// 1. Synchronize.
 	if f.callback != nil {
-		f.callback.emitProgress(10, "Synchronizing...")
+		f.callback.emitProgress(10, ProgressMessage{Key: "progress.synchronizing"})
 	}
 	if err := f.sync(); err != nil {
 		return fmt.Errorf("sync failed: %w", err)
@@ -595,7 +595,7 @@ func (f *ESP32Flasher) Flash(data []byte, offset uint32) error {
 
 	// 2. Detect the chip.
 	if f.callback != nil {
-		f.callback.emitProgress(20, "Detecting chip...")
+		f.callback.emitProgress(20, ProgressMessage{Key: "progress.detectingChip"})
 	}
 	if err := f.detectChip(); err != nil {
 		return fmt.Errorf("chip detection failed: %w", err)
@@ -608,7 +608,7 @@ func (f *ESP32Flasher) Flash(data []byte, offset uint32) error {
 
 	// 3. Attach and configure SPI Flash.
 	if f.callback != nil {
-		f.callback.emitProgress(30, "Attaching SPI Flash...")
+		f.callback.emitProgress(30, ProgressMessage{Key: "progress.attachingFlash"})
 	}
 	if err := f.spiAttach(); err != nil {
 		return fmt.Errorf("SPI attach failed: %w", err)
@@ -623,7 +623,7 @@ func (f *ESP32Flasher) Flash(data []byte, offset uint32) error {
 
 	// 4. Begin the Flash operation and erase the target range.
 	if f.callback != nil {
-		f.callback.emitProgress(35, "Erasing Flash...")
+		f.callback.emitProgress(35, ProgressMessage{Key: "progress.erasingFlash"})
 	}
 	if err := f.flashBegin(uint32(len(data)), offset); err != nil {
 		return fmt.Errorf("flash begin failed: %w", err)
@@ -635,7 +635,7 @@ func (f *ESP32Flasher) Flash(data []byte, offset uint32) error {
 	if f.callback != nil {
 		f.callback.emitLog(fmt.Sprintf("📤 Transferring data (%d blocks of %d bytes = %.1f MB)...",
 			totalBlocks, f.blockSize, float64(len(data))/1024/1024))
-		f.callback.emitProgress(45, "Transferring data...")
+		f.callback.emitProgress(45, ProgressMessage{Key: "progress.transferringData"})
 	}
 
 	startTime := time.Now()
@@ -669,7 +669,13 @@ func (f *ESP32Flasher) Flash(data []byte, offset uint32) error {
 			bytesWritten := float64((seq + 1) * uint32(f.blockSize))
 			speed := bytesWritten / elapsed / 1024 // KiB/s.
 
-			f.callback.emitProgress(progress, fmt.Sprintf("Writing %.1f%% (%.0f KiB/s)", percent, speed))
+			f.callback.emitProgress(progress, ProgressMessage{
+				Key: "progress.writing",
+				Values: map[string]any{
+					"percent": fmt.Sprintf("%.1f", percent),
+					"speed":   fmt.Sprintf("%.0f", speed),
+				},
+			})
 
 			// Log milestones only.
 			if seq == 0 || (seq+1)%50 == 0 || seq == uint32(totalBlocks-1) {
@@ -681,7 +687,7 @@ func (f *ESP32Flasher) Flash(data []byte, offset uint32) error {
 
 	// 6. Verify before FLASH_END; the application may modify NVS immediately after reboot.
 	if f.callback != nil {
-		f.callback.emitProgress(93, "Verifying MD5...")
+		f.callback.emitProgress(93, ProgressMessage{Key: "progress.verifyingMD5"})
 		f.callback.emitLog("🔍 Verifying written Flash before reboot...")
 	}
 	writtenMD5, err := f.flashMD5(offset, uint32(len(data)))
@@ -698,14 +704,14 @@ func (f *ESP32Flasher) Flash(data []byte, offset uint32) error {
 
 	// 7. Finish the ROM operation without rebooting yet.
 	if f.callback != nil {
-		f.callback.emitProgress(95, "Finishing...")
+		f.callback.emitProgress(95, ProgressMessage{Key: "progress.finishing"})
 	}
 	if err := f.flashEnd(); err != nil {
 		return fmt.Errorf("flash end failed: %w", err)
 	}
 
 	if f.callback != nil {
-		f.callback.emitProgress(100, "Done!")
+		f.callback.emitProgress(100, ProgressMessage{Key: "progress.done"})
 		f.callback.emitLog("🎉 Firmware flashed successfully!")
 	}
 

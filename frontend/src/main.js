@@ -9,6 +9,7 @@ import {
   InstallUpdate,
 } from "../wailsjs/go/main/App.js";
 import { ClipboardSetText, EventsOn } from "../wailsjs/runtime/runtime.js";
+import { formatLogCounter, formatTime, language, t, translateDocument } from "./i18n.js";
 
 const portSelect = document.getElementById("portSelect");
 const portDescription = document.getElementById("portDescription");
@@ -48,7 +49,7 @@ const MAX_LOG_LINE_CHARACTERS = 2_048;
 
 // Append a timestamped message to the log.
 function log(msg) {
-  const timestamp = new Date().toLocaleTimeString();
+  const timestamp = formatTime(new Date());
   addLogLine(`[${timestamp}] ${msg}`);
 }
 
@@ -64,7 +65,7 @@ function appendLogLines(lines) {
       continue;
     }
     if (line.length > MAX_LOG_LINE_CHARACTERS) {
-      line = `${line.slice(0, MAX_LOG_LINE_CHARACTERS)} … [truncated]`;
+      line = `${line.slice(0, MAX_LOG_LINE_CHARACTERS)} … [${t("log.truncated")}]`;
     }
     logLines.push(line);
     logCharacterCount += line.length;
@@ -109,12 +110,12 @@ function showCopyFeedback() {
   }
 
   btnCopyLog.classList.add("copied");
-  btnCopyLog.title = "Copied";
-  btnCopyLog.setAttribute("aria-label", "Console output copied");
+  btnCopyLog.title = t("terminal.copied");
+  btnCopyLog.setAttribute("aria-label", t("terminal.copiedAria"));
   copyFeedbackTimeout = setTimeout(() => {
     btnCopyLog.classList.remove("copied");
-    btnCopyLog.title = "Copy console output";
-    btnCopyLog.setAttribute("aria-label", "Copy console output");
+    btnCopyLog.title = t("terminal.copyLog");
+    btnCopyLog.setAttribute("aria-label", t("terminal.copyLog"));
     copyFeedbackTimeout = null;
   }, 1500);
 }
@@ -126,9 +127,7 @@ function clearLog() {
 }
 
 function updateLogCounter() {
-  const count = logLines.length;
-  const suffix = count === 1 ? "line" : "lines";
-  logCounter.textContent = `${count} ${suffix}`;
+  logCounter.textContent = formatLogCounter(logLines.length);
 }
 
 function setSystemStatus(text, busy = false) {
@@ -139,10 +138,11 @@ function setSystemStatus(text, busy = false) {
 // Update flash progress.
 function updateProgress(progress, message) {
   progressBar.style.width = `${progress}%`;
-  progressText.textContent = `${progress}%`;
+  const text = message?.key ? t(message.key, message.values) : String(message || `${progress}%`);
+  progressText.textContent = text;
   if (message && progress !== lastProgressLog) {
     lastProgressLog = progress;
-    log(message);
+    log(text);
   }
 }
 
@@ -170,7 +170,7 @@ EventsOn("monitor-data", (data) => {
   if (!isMonitoring) {
     return;
   }
-  const timestamp = new Date().toLocaleTimeString();
+  const timestamp = formatTime(new Date());
   const lines = String(data)
     .split(/\r?\n/)
     .map((line) => line.trim())
@@ -180,7 +180,7 @@ EventsOn("monitor-data", (data) => {
 });
 
 EventsOn("monitor-error", (error) => {
-  log(`❌ Monitor error: ${error}`);
+  log(t("log.monitorError", { error }));
   stopMonitoring();
 });
 
@@ -198,13 +198,13 @@ async function checkForUpdate() {
     }
     availableUpdate = update;
     btnUpdate.hidden = false;
-    btnUpdate.querySelector("span:last-child").textContent = `Update ${update.version}`;
+    btnUpdate.querySelector("span:last-child").textContent = t("update.version", { version: update.version });
     if (!update.canInstall) {
-      btnUpdate.title = "Automatic updates require the installed application";
-      btnUpdate.setAttribute("aria-label", "Update available; install the application to update automatically");
+      btnUpdate.title = t("update.requiresInstalledApp");
+      btnUpdate.setAttribute("aria-label", t("update.availableAria"));
     }
   } catch (error) {
-    log(`Update check unavailable: ${error}`);
+    log(t("log.updateCheckUnavailable", { error }));
   }
 }
 
@@ -214,7 +214,7 @@ async function showAppVersion() {
     appVersionTag.textContent = version.startsWith("v") ? version : `v${version}`;
   } catch (error) {
     appVersionTag.hidden = true;
-    log(`Could not read app version: ${error}`);
+    log(t("log.versionUnavailable", { error }));
   }
 }
 
@@ -223,22 +223,22 @@ btnUpdate.addEventListener("click", async () => {
     return;
   }
   if (isMonitoring || isFlashing) {
-    alert("Stop monitoring or wait for flashing to finish before updating.");
+    alert(t("alert.stopBeforeUpdate"));
     return;
   }
   if (!availableUpdate.canInstall) {
-    btnUpdate.querySelector("span:last-child").textContent = "Automatic update unavailable";
-    btnUpdate.title = "The application must be installed in a writable location";
-    setSystemStatus("Update unavailable");
-    log("Automatic updates require the installed application in a writable location.");
+    btnUpdate.querySelector("span:last-child").textContent = t("update.unavailable");
+    btnUpdate.title = t("update.writableLocation");
+    setSystemStatus(t("status.updateUnavailable"));
+    log(t("log.updateRequiresInstalledApp"));
     return;
   }
 
   btnUpdate.disabled = true;
   btnFlash.disabled = true;
   btnMonitor.disabled = true;
-  btnUpdate.querySelector("span:last-child").textContent = "Downloading update…";
-  setSystemStatus("Updating", true);
+  btnUpdate.querySelector("span:last-child").textContent = t("update.downloading");
+  setSystemStatus(t("status.updating"), true);
   try {
     await InstallUpdate();
   } catch (error) {
@@ -246,10 +246,10 @@ btnUpdate.addEventListener("click", async () => {
     btnUpdate.disabled = false;
     btnFlash.disabled = false;
     btnMonitor.disabled = false;
-    btnUpdate.querySelector("span:last-child").textContent = "Update failed — retry";
+    btnUpdate.querySelector("span:last-child").textContent = t("update.retry");
     btnUpdate.title = message;
-    setSystemStatus("Update failed");
-    log(`Update failed: ${message}`);
+    setSystemStatus(t("status.updateFailed"));
+    log(t("log.updateFailed", { error: message }));
   }
 });
 
@@ -273,10 +273,10 @@ async function refreshPorts() {
       portSelect.value = ports[0].name;
     }
     updatePortDescription();
-    log(`Found ${ports.length} ports`);
+    log(t("log.portsFound", { count: ports.length }));
   } catch (e) {
     updatePortDescription();
-    log("ListPorts error: " + e);
+    log(t("log.listPortsError", { error: e }));
   }
 }
 
@@ -286,9 +286,9 @@ function updatePortDescription() {
   if (description) {
     portDescription.textContent = `${port} — ${description}`;
   } else if (knownPorts.has(port.toUpperCase())) {
-    portDescription.textContent = `${port} — detected serial port`;
+    portDescription.textContent = t("setup.detectedPort", { port });
   } else {
-    portDescription.textContent = "No serial ports detected.";
+    portDescription.textContent = t("setup.noPorts");
   }
 }
 
@@ -297,13 +297,13 @@ portSelect.addEventListener("change", updatePortDescription);
 // Select a firmware image.
 btnChoose.addEventListener("click", async () => {
   try {
-    const res = await ChooseFile();
+    const res = await ChooseFile(language);
     if (res) {
       filePath.value = res;
-      log("Selected " + res);
+      log(t("log.selectedFile", { file: res }));
     }
   } catch (e) {
-    log("File selection error: " + e);
+    log(t("log.fileSelectionError", { error: e }));
   }
 });
 
@@ -312,12 +312,12 @@ btnFlash.addEventListener("click", async () => {
   const port = portSelect.value.trim();
   const file = filePath.value;
   if (!port || !file) {
-    alert("Select a port and firmware file.");
+    alert(t("alert.selectPortAndFile"));
     return;
   }
 
   if (isMonitoring) {
-    alert("Stop serial monitoring before flashing.");
+    alert(t("alert.stopMonitorBeforeFlash"));
     return;
   }
 
@@ -329,25 +329,25 @@ btnFlash.addEventListener("click", async () => {
   btnMonitor.disabled = true;
   portSelect.disabled = true;
   baudSelect.disabled = true;
-  setSystemStatus("Flashing", true);
+  setSystemStatus(t("status.flashing"), true);
 
   // Clear the log and reveal progress.
   clearLog();
   showProgress(true);
 
-  log(`🚀 Starting flash ${file} → ${port}`);
+  log(t("log.startFlash", { file, port }));
 
   try {
     await Flash(port, file);
-    log("✅ Firmware flashed successfully!");
+    log(t("log.flashSuccess"));
     setTimeout(() => {
-      alert("Firmware flashed successfully!");
+      alert(t("alert.flashSuccess"));
     }, 100);
   } catch (e) {
-    log("❌ Flash error: " + e);
-    updateProgress(0, "Error");
+    log(t("log.flashError", { error: e }));
+    updateProgress(0, { key: "progress.failed" });
     setTimeout(() => {
-      alert("Flash error: " + e);
+      alert(t("alert.flashError", { error: e }));
     }, 100);
   } finally {
     // Restore the controls and hide progress.
@@ -359,7 +359,7 @@ btnFlash.addEventListener("click", async () => {
       btnMonitor.disabled = false;
       portSelect.disabled = false;
       baudSelect.disabled = false;
-      setSystemStatus("System ready");
+      setSystemStatus(t("status.ready"));
       isFlashing = false;
     }, 1000); // Leave the final state visible briefly.
   }
@@ -370,7 +370,7 @@ btnMonitor.addEventListener("click", async () => {
   const port = portSelect.value.trim();
   const baud = parseInt(baudSelect.value);
   if (!port) {
-    alert("Select a serial port to monitor.");
+    alert(t("alert.selectPortToMonitor"));
     return;
   }
 
@@ -380,11 +380,11 @@ btnMonitor.addEventListener("click", async () => {
 
     startMonitoring();
     await MonitorPort(port, baud);
-    log(`🔍 Monitoring ${port} at ${baud} baud`);
+    log(t("log.monitoring", { port, baud }));
   } catch (e) {
     stopMonitoring();
-    log("❌ Could not start monitoring: " + e);
-    alert("Could not start monitoring: " + e);
+    log(t("log.monitorStartError", { error: e }));
+    alert(t("alert.monitorStartError", { error: e }));
   }
 });
 
@@ -394,7 +394,7 @@ btnStopMonitor.addEventListener("click", async () => {
   try {
     await StopMonitor();
   } catch (e) {
-    log("❌ Could not stop monitoring: " + e);
+    log(t("log.monitorStopError", { error: e }));
   }
 });
 
@@ -407,7 +407,7 @@ function startMonitoring() {
   portSelect.disabled = true;
   baudSelect.disabled = true;
   btnUpdate.disabled = true;
-  setSystemStatus("Monitoring", true);
+  setSystemStatus(t("status.monitoring"), true);
 }
 
 function stopMonitoring() {
@@ -418,7 +418,7 @@ function stopMonitoring() {
   portSelect.disabled = false;
   baudSelect.disabled = false;
   btnUpdate.disabled = false;
-  setSystemStatus("System ready");
+  setSystemStatus(t("status.ready"));
 
   renderLog();
 }
@@ -426,7 +426,7 @@ function stopMonitoring() {
 // Clear-log button.
 btnClearLog.addEventListener("click", () => {
   clearLog();
-  log("🗑️ Log cleared");
+  log(t("log.cleared"));
 });
 
 // Copy-log button.
@@ -443,7 +443,7 @@ btnCopyLog.addEventListener("click", async () => {
     }
     showCopyFeedback();
   } catch (error) {
-    log(`❌ Could not copy console output: ${error}`);
+    log(t("log.copyError", { error }));
   }
 });
 
@@ -458,11 +458,11 @@ btnAutoScroll.addEventListener("click", () => {
     requestAnimationFrame(() => {
       logArea.scrollTop = logArea.scrollHeight;
     });
-    log("📜 Auto-scroll enabled");
+    log(t("log.autoScrollEnabled"));
   } else {
     btnAutoScroll.classList.remove("active");
     btnAutoScroll.setAttribute("aria-pressed", "false");
-    log("⏸️ Auto-scroll disabled");
+    log(t("log.autoScrollDisabled"));
   }
 });
 
@@ -480,6 +480,8 @@ document.addEventListener("keydown", (event) => {
     }
   }
 });
+
+translateDocument();
 
 // Initialize the auto-scroll button state.
 if (autoScrollEnabled) {
