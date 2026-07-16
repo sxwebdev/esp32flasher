@@ -32,8 +32,8 @@ func NewApp() *App {
 	return &App{}
 }
 
-// ListPorts returns the available serial ports.
-func (a *App) ListPorts() ([]string, error) {
+// ListPorts returns the available serial ports and device descriptions.
+func (a *App) ListPorts() ([]serialports.Port, error) {
 	return serialports.List()
 }
 

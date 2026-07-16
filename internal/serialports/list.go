@@ -5,15 +5,34 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"unicode/utf16"
 )
 
-type source func() ([]string, error)
+// Port describes a serial port shown in the device picker.
+type Port struct {
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+}
+
+type source func() ([]Port, error)
+
+func fromNames(names []string, err error) ([]Port, error) {
+	if err != nil {
+		return nil, err
+	}
+
+	ports := make([]Port, 0, len(names))
+	for _, name := range names {
+		ports = append(ports, Port{Name: name})
+	}
+	return ports, nil
+}
 
 // discover combines independent OS discovery mechanisms. A failure in one
 // source must not hide ports returned by another source.
-func discover(sources ...source) ([]string, error) {
+func discover(sources ...source) ([]Port, error) {
 	var (
-		allPorts        []string
+		allPorts        []Port
 		sourceSucceeded bool
 		sourceErrors    []error
 	)
@@ -37,32 +56,53 @@ func discover(sources ...source) ([]string, error) {
 	return nil, errors.Join(sourceErrors...)
 }
 
-func normalize(ports []string) []string {
-	seen := make(map[string]struct{}, len(ports))
-	result := make([]string, 0, len(ports))
+func normalize(ports []Port) []Port {
+	byName := make(map[string]int, len(ports))
+	result := make([]Port, 0, len(ports))
 	for _, port := range ports {
-		port = strings.TrimSpace(port)
-		if port == "" {
+		port.Name = strings.TrimSpace(port.Name)
+		port.Description = cleanDescription(port.Description, port.Name)
+		if port.Name == "" {
 			continue
 		}
 
-		key := strings.ToUpper(port)
-		if _, exists := seen[key]; exists {
+		key := strings.ToUpper(port.Name)
+		if index, exists := byName[key]; exists {
+			if result[index].Description == "" && port.Description != "" {
+				result[index].Description = port.Description
+			}
 			continue
 		}
-		seen[key] = struct{}{}
+
+		byName[key] = len(result)
 		result = append(result, port)
 	}
 
 	sort.Slice(result, func(i, j int) bool {
-		leftNumber, leftCOM := comPortNumber(result[i])
-		rightNumber, rightCOM := comPortNumber(result[j])
+		leftNumber, leftCOM := comPortNumber(result[i].Name)
+		rightNumber, rightCOM := comPortNumber(result[j].Name)
 		if leftCOM && rightCOM {
 			return leftNumber < rightNumber
 		}
-		return strings.ToUpper(result[i]) < strings.ToUpper(result[j])
+		return strings.ToUpper(result[i].Name) < strings.ToUpper(result[j].Name)
 	})
 	return result
+}
+
+func cleanDescription(description, portName string) string {
+	description = strings.TrimSpace(description)
+	if description == "" {
+		return ""
+	}
+
+	suffix := " (" + portName + ")"
+	if strings.HasSuffix(strings.ToUpper(description), strings.ToUpper(suffix)) {
+		description = strings.TrimSpace(description[:len(description)-len(suffix)])
+	}
+	if strings.EqualFold(description, portName) {
+		return ""
+	}
+	return description
 }
 
 func comPortNumber(port string) (int, bool) {
@@ -73,4 +113,21 @@ func comPortNumber(port string) (int, bool) {
 
 	number, err := strconv.Atoi(upper[3:])
 	return number, err == nil
+}
+
+func splitMultiString(value []uint16) []string {
+	var result []string
+	for start := 0; start < len(value); {
+		end := start
+		for end < len(value) && value[end] != 0 {
+			end++
+		}
+		if end == start {
+			break
+		}
+
+		result = append(result, string(utf16.Decode(value[start:end])))
+		start = end + 1
+	}
+	return result
 }

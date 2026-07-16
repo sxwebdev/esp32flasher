@@ -46,7 +46,14 @@
           <div class="field-group">
             <label class="label" for="portSelect">Serial port</label>
             <div class="input-row port-row">
-              <select id="portSelect" class="select"></select>
+              <input
+                id="portSelect"
+                class="input"
+                list="portOptions"
+                placeholder="COM7"
+                autocomplete="off"
+              />
+              <datalist id="portOptions"></datalist>
               <button
                 id="btnRefresh"
                 class="btn btn-icon"
@@ -60,6 +67,7 @@
                 </svg>
               </button>
             </div>
+            <div id="portDescription" class="field-hint">Select a detected port or enter a COM port manually.</div>
           </div>
 
           <div class="field-group">

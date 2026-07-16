@@ -11,6 +11,8 @@ import {
 import { EventsOn } from "../wailsjs/runtime/runtime.js";
 
 const portSelect = document.getElementById("portSelect");
+const portOptions = document.getElementById("portOptions");
+const portDescription = document.getElementById("portDescription");
 const baudSelect = document.getElementById("baudSelect");
 const btnRefresh = document.getElementById("btnRefresh");
 const btnChoose = document.getElementById("btnChoose");
@@ -37,6 +39,7 @@ let logCharacterCount = 0;
 let lastProgressLog = null;
 let availableUpdate = null;
 let isFlashing = false;
+let knownPorts = new Map();
 const LOG_RENDER_INTERVAL_MS = 50;
 const MAX_LOG_LINES = 500;
 const MAX_LOG_CHARACTERS = 160_000;
@@ -234,20 +237,46 @@ btnUpdate.addEventListener("click", async () => {
 
 // Discover and display serial ports.
 async function refreshPorts() {
-  portSelect.innerHTML = "";
+  const selectedPort = portSelect.value;
+  portOptions.innerHTML = "";
+  knownPorts = new Map();
   try {
     const ports = await ListPorts();
     ports.forEach((p) => {
       const o = document.createElement("option");
-      o.value = p;
-      o.textContent = p;
-      portSelect.appendChild(o);
+      o.value = p.name;
+      o.label = p.description ? `${p.name} — ${p.description}` : p.name;
+      portOptions.appendChild(o);
+      knownPorts.set(p.name.toUpperCase(), p.description || "");
     });
+    if (selectedPort) {
+      portSelect.value = selectedPort;
+    } else if (ports.length > 0) {
+      portSelect.value = ports[0].name;
+    }
+    updatePortDescription();
     log(`Found ${ports.length} ports`);
   } catch (e) {
+    updatePortDescription();
     log("ListPorts error: " + e);
   }
 }
+
+function updatePortDescription() {
+  const port = portSelect.value.trim();
+  const description = knownPorts.get(port.toUpperCase());
+  if (description) {
+    portDescription.textContent = `${port} — ${description}`;
+  } else if (knownPorts.has(port.toUpperCase())) {
+    portDescription.textContent = `${port} — detected serial port`;
+  } else if (port) {
+    portDescription.textContent = `${port} — manually entered port`;
+  } else {
+    portDescription.textContent = "Select a detected port or enter a COM port manually.";
+  }
+}
+
+portSelect.addEventListener("input", updatePortDescription);
 
 // Select a firmware image.
 btnChoose.addEventListener("click", async () => {
@@ -264,7 +293,7 @@ btnChoose.addEventListener("click", async () => {
 
 // Flash button.
 btnFlash.addEventListener("click", async () => {
-  const port = portSelect.value;
+  const port = portSelect.value.trim();
   const file = filePath.value;
   if (!port || !file) {
     alert("Select a port and firmware file.");
@@ -322,7 +351,7 @@ btnFlash.addEventListener("click", async () => {
 
 // Serial monitor button.
 btnMonitor.addEventListener("click", async () => {
-  const port = portSelect.value;
+  const port = portSelect.value.trim();
   const baud = parseInt(baudSelect.value);
   if (!port) {
     alert("Select a serial port to monitor.");
