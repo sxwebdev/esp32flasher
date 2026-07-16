@@ -23,15 +23,15 @@ func New(portName string, callback *Callbacks) (*ESP32Flasher, error) {
 		},
 	}
 
-	// Open a second descriptor before serial.Open acquires exclusive access.
-	// Unix needs it to set DTR and RTS atomically for CP2102 DevKit circuits.
-	control, controlErr := openModemControl(portName)
-	port, err := serial.Open(portName, mode)
+	// Use the platform transport for both modem-line control and serial I/O.
+	// Windows mirrors pySerial/esptool on one descriptor; Unix additionally
+	// opens its atomic ioctl control descriptor before serial.Open.
+	port, control, controlErr, err := openFlashPort(portName, mode)
 	if err != nil {
-		if control != nil {
-			_ = control.Close()
-		}
 		return nil, fmt.Errorf("failed to open port: %w", err)
+	}
+	if platformUsesEsptoolWindowsControl && callback != nil {
+		callback.emitLog("🔧 Windows DTR/RTS control: esptool-compatible EscapeCommFunction")
 	}
 
 	flasher := &ESP32Flasher{

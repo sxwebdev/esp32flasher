@@ -8,16 +8,18 @@ import {
   CheckForUpdate,
   InstallUpdate,
 } from "../wailsjs/go/main/App.js";
-import { EventsOn } from "../wailsjs/runtime/runtime.js";
+import { ClipboardSetText, EventsOn } from "../wailsjs/runtime/runtime.js";
 import { formatLogCounter, formatTime, language, t, translateDocument } from "./i18n.js";
 
 const portSelect = document.getElementById("portSelect");
+const portDescription = document.getElementById("portDescription");
 const baudSelect = document.getElementById("baudSelect");
 const btnRefresh = document.getElementById("btnRefresh");
 const btnChoose = document.getElementById("btnChoose");
 const btnFlash = document.getElementById("btnFlash");
 const btnMonitor = document.getElementById("btnMonitor");
 const btnStopMonitor = document.getElementById("btnStopMonitor");
+const btnCopyLog = document.getElementById("btnCopyLog");
 const btnClearLog = document.getElementById("btnClearLog");
 const btnAutoScroll = document.getElementById("btnAutoScroll");
 const filePath = document.getElementById("filePath");
@@ -32,12 +34,14 @@ const appVersionTag = document.getElementById("appVersion");
 
 let isMonitoring = false;
 let logUpdateTimeout = null; // Batches log rendering updates.
+let copyFeedbackTimeout = null;
 let autoScrollEnabled = true; // Auto-scroll is enabled by default.
 let logLines = []; // In-memory terminal line buffer.
 let logCharacterCount = 0;
 let lastProgressLog = null;
 let availableUpdate = null;
 let isFlashing = false;
+let knownPorts = new Map();
 const LOG_RENDER_INTERVAL_MS = 50;
 const MAX_LOG_LINES = 500;
 const MAX_LOG_CHARACTERS = 160_000;
@@ -92,11 +96,28 @@ function renderLog() {
   }
 
   logArea.textContent = logLines.join("\n");
+  btnCopyLog.disabled = logLines.length === 0;
   updateLogCounter();
 
   if (autoScrollEnabled) {
     logArea.scrollTop = logArea.scrollHeight;
   }
+}
+
+function showCopyFeedback() {
+  if (copyFeedbackTimeout !== null) {
+    clearTimeout(copyFeedbackTimeout);
+  }
+
+  btnCopyLog.classList.add("copied");
+  btnCopyLog.title = t("terminal.copied");
+  btnCopyLog.setAttribute("aria-label", t("terminal.copiedAria"));
+  copyFeedbackTimeout = setTimeout(() => {
+    btnCopyLog.classList.remove("copied");
+    btnCopyLog.title = t("terminal.copyLog");
+    btnCopyLog.setAttribute("aria-label", t("terminal.copyLog"));
+    copyFeedbackTimeout = null;
+  }, 1500);
 }
 
 function clearLog() {
@@ -234,20 +255,44 @@ btnUpdate.addEventListener("click", async () => {
 
 // Discover and display serial ports.
 async function refreshPorts() {
+  const selectedPort = portSelect.value;
   portSelect.innerHTML = "";
+  knownPorts = new Map();
   try {
     const ports = await ListPorts();
     ports.forEach((p) => {
       const o = document.createElement("option");
-      o.value = p;
-      o.textContent = p;
+      o.value = p.name;
+      o.textContent = p.description ? `${p.name} — ${p.description}` : p.name;
       portSelect.appendChild(o);
+      knownPorts.set(p.name.toUpperCase(), p.description || "");
     });
+    if (selectedPort && knownPorts.has(selectedPort.toUpperCase())) {
+      portSelect.value = selectedPort;
+    } else if (ports.length > 0) {
+      portSelect.value = ports[0].name;
+    }
+    updatePortDescription();
     log(t("log.portsFound", { count: ports.length }));
   } catch (e) {
+    updatePortDescription();
     log(t("log.listPortsError", { error: e }));
   }
 }
+
+function updatePortDescription() {
+  const port = portSelect.value.trim();
+  const description = knownPorts.get(port.toUpperCase());
+  if (description) {
+    portDescription.textContent = `${port} — ${description}`;
+  } else if (knownPorts.has(port.toUpperCase())) {
+    portDescription.textContent = t("setup.detectedPort", { port });
+  } else {
+    portDescription.textContent = t("setup.noPorts");
+  }
+}
+
+portSelect.addEventListener("change", updatePortDescription);
 
 // Select a firmware image.
 btnChoose.addEventListener("click", async () => {
@@ -264,7 +309,7 @@ btnChoose.addEventListener("click", async () => {
 
 // Flash button.
 btnFlash.addEventListener("click", async () => {
-  const port = portSelect.value;
+  const port = portSelect.value.trim();
   const file = filePath.value;
   if (!port || !file) {
     alert(t("alert.selectPortAndFile"));
@@ -322,7 +367,7 @@ btnFlash.addEventListener("click", async () => {
 
 // Serial monitor button.
 btnMonitor.addEventListener("click", async () => {
-  const port = portSelect.value;
+  const port = portSelect.value.trim();
   const baud = parseInt(baudSelect.value);
   if (!port) {
     alert(t("alert.selectPortToMonitor"));
@@ -382,6 +427,24 @@ function stopMonitoring() {
 btnClearLog.addEventListener("click", () => {
   clearLog();
   log(t("log.cleared"));
+});
+
+// Copy-log button.
+btnCopyLog.addEventListener("click", async () => {
+  const contents = logLines.join("\n");
+  if (!contents) {
+    return;
+  }
+
+  try {
+    const copied = await ClipboardSetText(contents);
+    if (!copied) {
+      throw new Error("clipboard rejected the text");
+    }
+    showCopyFeedback();
+  } catch (error) {
+    log(t("log.copyError", { error }));
+  }
 });
 
 // Auto-scroll button.

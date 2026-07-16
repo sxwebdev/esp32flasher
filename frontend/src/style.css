@@ -637,6 +637,12 @@ h2 {
   background: transparent;
 }
 
+.btn-copy.copied {
+  color: var(--success);
+  border-color: #31533e;
+  background: #142019;
+}
+
 .btn[hidden] {
   display: none;
 }
