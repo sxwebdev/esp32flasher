@@ -4,12 +4,12 @@ import (
 	"context"
 	"espflasher/internal/esp32"
 	"espflasher/internal/firmware"
+	"espflasher/internal/serialports"
 	"fmt"
 	"os"
 	"sync"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
-	serialport "go.bug.st/serial"
 )
 
 // App struct
@@ -34,7 +34,7 @@ func NewApp() *App {
 
 // ListPorts returns the available serial ports.
 func (a *App) ListPorts() ([]string, error) {
-	return serialport.GetPortsList()
+	return serialports.List()
 }
 
 // startup is called when the app starts. The context is saved
