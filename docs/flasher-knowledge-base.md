@@ -30,13 +30,24 @@ The application is a native Wails desktop program. It contains its own ESP32 ser
 
 `App` must remain in Go package `main`. Wails generates the frontend binding as `window.go.main.App`, and the current frontend imports `wailsjs/go/main/App.js`. Moving `App` into an internal package changes that namespace and breaks the generated API unless the frontend and generated bindings are migrated together.
 
+## Interface language
+
+The interface is localized only into Russian and English. `frontend/src/i18n.js` is the single source of truth for all frontend-facing strings:
+
+- `navigator.language` supplies the primary system UI language exposed by the Wails WebView;
+- a language tag starting with `ru` selects Russian; every other tag, missing value, or unsupported language selects English;
+- static markup uses `data-i18n*` attributes and dynamic text uses `t("key", values)`;
+- both dictionaries must have the same keys; `i18n.js` verifies this on startup to prevent partially translated releases.
+
+Do not put new user-facing frontend text directly in `index.html` or `main.js`; add a key to both dictionaries first. Technical ESP32 protocol diagnostics deliberately remain in English, so logs can be compared directly with ROM and serial-tool documentation. The native firmware chooser receives the same language value and localizes its title and file-filter label.
+
 ## Layer responsibilities
 
 ### Wails application layer
 
 `app.go` validates the selected file, loads it, classifies it through `internal/firmware`, creates the flasher, relays callbacks to Wails events, and reboots only after a successful write. It emits:
 
-- `flash-progress` with a percentage and message;
+- `flash-progress` with a percentage plus a language-neutral message key and values;
 - `flash-log` with a diagnostic line.
 
 `monitor.go` owns the user-facing serial monitor. Flashing and monitoring must never use the same port at the same time.
