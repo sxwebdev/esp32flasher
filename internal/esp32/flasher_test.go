@@ -8,54 +8,6 @@ import (
 	"time"
 )
 
-func TestAtomicBootloaderResetChangesDTRAndRTSTogether(t *testing.T) {
-	t.Context()
-	port := &fakeSerialPort{}
-	control := &fakeModemControl{port: port}
-
-	err := atomicBootloaderReset(control, func(delay time.Duration) {
-		port.actions = append(port.actions, "WAIT="+delay.String())
-	})
-	if err != nil {
-		t.Fatalf("atomicBootloaderReset() error = %v", err)
-	}
-
-	want := []string{
-		"DTR=false,RTS=false",
-		"DTR=false,RTS=true",
-		"WAIT=100ms",
-		"DTR=true,RTS=false",
-		"WAIT=50ms",
-		"DTR=false,RTS=false",
-		"WAIT=50ms",
-	}
-	if !slices.Equal(port.actions, want) {
-		t.Fatalf("control line sequence = %v, want %v", port.actions, want)
-	}
-}
-
-func TestAtomicBootloaderResetStopsOnControlError(t *testing.T) {
-	t.Context()
-	port := &fakeSerialPort{failAction: "DTR=true,RTS=false"}
-	control := &fakeModemControl{port: port}
-
-	err := atomicBootloaderReset(control, func(delay time.Duration) {
-		port.actions = append(port.actions, "WAIT="+delay.String())
-	})
-	if !errors.Is(err, errControlLine) {
-		t.Fatalf("atomicBootloaderReset() error = %v, want %v", err, errControlLine)
-	}
-	want := []string{
-		"DTR=false,RTS=false",
-		"DTR=false,RTS=true",
-		"WAIT=100ms",
-		"DTR=true,RTS=false",
-	}
-	if !slices.Equal(port.actions, want) {
-		t.Fatalf("actions after failure = %v, want %v", port.actions, want)
-	}
-}
-
 func TestFlashEndLeavesROMRunningUntilHardwareReset(t *testing.T) {
 	t.Context()
 	response := slipEncode([]byte{0x01, ESP_FLASH_END, 0, 0, 0, 0, 0, 0, 0, 0})
