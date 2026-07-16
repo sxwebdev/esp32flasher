@@ -23,6 +23,15 @@ func New(portName string, callback *Callbacks) (*ESP32Flasher, error) {
 		},
 	}
 
+	if platformSupportsPreOpenReset {
+		if callback != nil {
+			callback.emitLog("🔄 Windows atomic DTR/RTS reset before opening the port")
+		}
+		if err := preOpenBootloaderReset(portName); err != nil && callback != nil {
+			callback.emitLog(fmt.Sprintf("⚠️ Pre-open atomic reset is unavailable: %v", err))
+		}
+	}
+
 	// Open a second descriptor before serial.Open acquires exclusive access.
 	// Unix needs it to set DTR and RTS atomically for CP2102 DevKit circuits.
 	control, controlErr := openModemControl(portName)
@@ -53,6 +62,25 @@ func New(portName string, callback *Callbacks) (*ESP32Flasher, error) {
 	}
 
 	return flasher, nil
+}
+
+func atomicBootloaderReset(control modemControl, sleep func(time.Duration)) error {
+	if err := control.Set(false, false); err != nil {
+		return fmt.Errorf("release DTR/RTS before atomic reset: %w", err)
+	}
+	if err := control.Set(false, true); err != nil {
+		return fmt.Errorf("hold EN low before atomic reset: %w", err)
+	}
+	sleep(SERIAL_FLASHER_RESET_HOLD_TIME_MS * time.Millisecond)
+	if err := control.Set(true, false); err != nil {
+		return fmt.Errorf("release EN with GPIO0 low: %w", err)
+	}
+	sleep(SERIAL_FLASHER_BOOT_HOLD_TIME_MS * time.Millisecond)
+	if err := control.Set(false, false); err != nil {
+		return fmt.Errorf("release GPIO0 after atomic reset: %w", err)
+	}
+	sleep(50 * time.Millisecond)
+	return nil
 }
 
 // NewManual creates a flasher for a board already placed in download mode.

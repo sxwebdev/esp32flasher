@@ -8,7 +8,7 @@ import {
   CheckForUpdate,
   InstallUpdate,
 } from "../wailsjs/go/main/App.js";
-import { EventsOn } from "../wailsjs/runtime/runtime.js";
+import { ClipboardSetText, EventsOn } from "../wailsjs/runtime/runtime.js";
 
 const portSelect = document.getElementById("portSelect");
 const portDescription = document.getElementById("portDescription");
@@ -18,6 +18,7 @@ const btnChoose = document.getElementById("btnChoose");
 const btnFlash = document.getElementById("btnFlash");
 const btnMonitor = document.getElementById("btnMonitor");
 const btnStopMonitor = document.getElementById("btnStopMonitor");
+const btnCopyLog = document.getElementById("btnCopyLog");
 const btnClearLog = document.getElementById("btnClearLog");
 const btnAutoScroll = document.getElementById("btnAutoScroll");
 const filePath = document.getElementById("filePath");
@@ -32,6 +33,7 @@ const appVersionTag = document.getElementById("appVersion");
 
 let isMonitoring = false;
 let logUpdateTimeout = null; // Batches log rendering updates.
+let copyFeedbackTimeout = null;
 let autoScrollEnabled = true; // Auto-scroll is enabled by default.
 let logLines = []; // In-memory terminal line buffer.
 let logCharacterCount = 0;
@@ -93,11 +95,28 @@ function renderLog() {
   }
 
   logArea.textContent = logLines.join("\n");
+  btnCopyLog.disabled = logLines.length === 0;
   updateLogCounter();
 
   if (autoScrollEnabled) {
     logArea.scrollTop = logArea.scrollHeight;
   }
+}
+
+function showCopyFeedback() {
+  if (copyFeedbackTimeout !== null) {
+    clearTimeout(copyFeedbackTimeout);
+  }
+
+  btnCopyLog.classList.add("copied");
+  btnCopyLog.title = "Copied";
+  btnCopyLog.setAttribute("aria-label", "Console output copied");
+  copyFeedbackTimeout = setTimeout(() => {
+    btnCopyLog.classList.remove("copied");
+    btnCopyLog.title = "Copy console output";
+    btnCopyLog.setAttribute("aria-label", "Copy console output");
+    copyFeedbackTimeout = null;
+  }, 1500);
 }
 
 function clearLog() {
@@ -408,6 +427,24 @@ function stopMonitoring() {
 btnClearLog.addEventListener("click", () => {
   clearLog();
   log("🗑️ Log cleared");
+});
+
+// Copy-log button.
+btnCopyLog.addEventListener("click", async () => {
+  const contents = logLines.join("\n");
+  if (!contents) {
+    return;
+  }
+
+  try {
+    const copied = await ClipboardSetText(contents);
+    if (!copied) {
+      throw new Error("clipboard rejected the text");
+    }
+    showCopyFeedback();
+  } catch (error) {
+    log(`❌ Could not copy console output: ${error}`);
+  }
 });
 
 // Auto-scroll button.
