@@ -290,7 +290,7 @@ h2 {
   gap: 6px;
 }
 
-.port-row .input {
+.port-row .select {
   min-width: 0;
   flex: 1;
 }

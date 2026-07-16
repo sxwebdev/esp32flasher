@@ -11,7 +11,6 @@ import {
 import { EventsOn } from "../wailsjs/runtime/runtime.js";
 
 const portSelect = document.getElementById("portSelect");
-const portOptions = document.getElementById("portOptions");
 const portDescription = document.getElementById("portDescription");
 const baudSelect = document.getElementById("baudSelect");
 const btnRefresh = document.getElementById("btnRefresh");
@@ -238,18 +237,18 @@ btnUpdate.addEventListener("click", async () => {
 // Discover and display serial ports.
 async function refreshPorts() {
   const selectedPort = portSelect.value;
-  portOptions.innerHTML = "";
+  portSelect.innerHTML = "";
   knownPorts = new Map();
   try {
     const ports = await ListPorts();
     ports.forEach((p) => {
       const o = document.createElement("option");
       o.value = p.name;
-      o.label = p.description ? `${p.name} — ${p.description}` : p.name;
-      portOptions.appendChild(o);
+      o.textContent = p.description ? `${p.name} — ${p.description}` : p.name;
+      portSelect.appendChild(o);
       knownPorts.set(p.name.toUpperCase(), p.description || "");
     });
-    if (selectedPort) {
+    if (selectedPort && knownPorts.has(selectedPort.toUpperCase())) {
       portSelect.value = selectedPort;
     } else if (ports.length > 0) {
       portSelect.value = ports[0].name;
@@ -269,14 +268,12 @@ function updatePortDescription() {
     portDescription.textContent = `${port} — ${description}`;
   } else if (knownPorts.has(port.toUpperCase())) {
     portDescription.textContent = `${port} — detected serial port`;
-  } else if (port) {
-    portDescription.textContent = `${port} — manually entered port`;
   } else {
-    portDescription.textContent = "Select a detected port or enter a COM port manually.";
+    portDescription.textContent = "No serial ports detected.";
   }
 }
 
-portSelect.addEventListener("input", updatePortDescription);
+portSelect.addEventListener("change", updatePortDescription);
 
 // Select a firmware image.
 btnChoose.addEventListener("click", async () => {
